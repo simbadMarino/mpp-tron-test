@@ -1,17 +1,19 @@
 # MPP TRON Method
-## SW System Requirements & SW System Test Spec (SSTS)
+## System Requirements Specification (SyRS) & System Test Specification
 
 ### Repo Layout
 - `requirements/base-httpauth-payment.md`  BASE-001..060 from draft-httpauth-payment-01 (chain-agnostic core scheme, used as reference only)
 - `requirements/evm-charge.md`             EVM-001..042 from draft-evm-charge-00 (Used as reference only)
-- `requirements/`                          collection of tron mpp requirements (SW System, evm reference and base reference)
-- `tests/`                                 test cases: markdown (`## TC-nnn`) or code comments containing `Covers: SSR-012`
+- `requirements/evm-session.md`            SES-001..144 from draft-evm-session-00 (Used as reference only)
+- `requirements/draft-tron-system_requirements.md`  SYS-xxx: TRON system requirements (SyRS) for the charge and session intents, merged from the three references above; this is the set tests must cover
+- `requirements/`                          collection of tron mpp requirements (system requirements, evm references and base reference)
+- `tests/`                                 test cases: markdown (`## TC-nnn`) or code comments containing `Covers: SYS-012`
 - `tests/_template.md`                     template for new test cases
 - `tools/trace.py`                         coverage check and matrix generator
 - `traceability.md`                        auto-generated traceability matrix; do not edit
 
 ### Workflow
-1. Write or update requirements (SSR); never renumber IDs.
+1. Write or update requirements (SYS); never renumber IDs.
     1.1 Mark a requirement not applicable with `- Status: n/a (reason)`; it leaves the coverage count but stays in the matrix.
     1.2 Mark a requirement "doc", meaning its covered by at least 1 TC.
 2. Add test cases that name their requirements in a `Covers:` line.
