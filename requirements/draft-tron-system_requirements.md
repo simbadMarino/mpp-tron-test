@@ -19,7 +19,7 @@ tests need to cover. A requirement that both intents share is written once, in t
 
 Intent applicability
 - Both intents: SYS-0xx (SDK), SYS-1xx (request flow), SYS-203 (addresses), SYS-301..305 (credential framing and
-  client validation), SYS-503..507 and SYS-513 (on-chain result, broadcast, confirmation, node trust), SYS-602,
+  client validation), SYS-503..507, SYS-513 and SYS-514 (on-chain result, broadcast, confirmation, node trust, Permit2 signing), SYS-602,
   SYS-701..705 (errors), SYS-8xx (security)
 - Charge only: the rest of SYS-2xx..SYS-5xx, SYS-601, SYS-710..713
 - Session only: SYS-10xx..SYS-18xx
@@ -48,6 +48,14 @@ Field guide
   "(project)" marks a level assigned by this project because the source is not normative.
 - Role: Client (SDK client), Server (SDK server), Both, SDK (package as a whole), Contract (channel escrow contract)
 - Verification: verification level(s), ST / SIT / CT as defined above; ST/SIT = both
+- Implementer: which software makes the requirement true. mppx = handled by the `mppx` library (confirm with a
+  conformance check once the method is plugged in, do not re-implement); sdk = code of the TRON MPP SDK; contract =
+  channel escrow contract; app = the application or deployment embedding the SDK (the SDK at most exposes a hook or
+  documents it). Combined values = shared, first one leads. The mppx assignments come from the mpp.dev documentation
+  (read 12 Nov 2026), not from the library source; confirm them when implementation starts.
+- Release: R1 = charge intent with permit2, transaction and hash, plus everything both intents share; R2 = session
+  intent (Permit2 or client-paid funding); R3 = EIP-3009 token authorization, pending decision D4. R2/R3 = the
+  requirement has a part in each.
 - Source: BASE/EVM/SES requirements merged into this one; "-" = TRON- or SDK-specific, no upstream requirement
 - TRON: same = upstream text applies as written, adapt = adapted to TRON, review = open design decision (see Note and
   the open decisions table), new = added for TRON or the SDK
@@ -87,6 +95,8 @@ Sections
 - Level: MUST (project)
 - Role: SDK
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -97,6 +107,8 @@ Sections
 - Level: MUST (project)
 - Role: SDK
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -107,6 +119,8 @@ Sections
 - Level: MUST (project)
 - Role: SDK
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -117,6 +131,8 @@ Sections
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: BASE-014
 - TRON: adapt
 - Status: open
@@ -127,6 +143,8 @@ Sections
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: BASE-015
 - TRON: same
 - Status: open
@@ -137,16 +155,20 @@ Sections
 - Level: MUST (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
-- Text: The server `charge(...)` factory takes recipient, currency, chainId, TRON node endpoint, accepted credential types, confirmation policy and (for server-paid types) a fee payer signer; invalid or inconsistent configuration fails at creation, not on the first request.
+- Text: The server `charge(...)` factory takes recipient, currency, chainId, TRON node endpoint, accepted credential types, confirmation policy, a `Store` for replay protection (SYS-710, SYS-711) and (for server-paid types) a fee payer signer; invalid or inconsistent configuration, including a missing store, fails at creation, not on the first request.
 
 ## SYS-007 Client factory configuration
 - Spec: project
 - Level: MUST (project)
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -157,6 +179,8 @@ Sections
 - Level: MUST (project)
 - Role: Both
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -167,6 +191,8 @@ Sections
 - Level: MUST (project)
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -177,6 +203,8 @@ Sections
 - Level: MUST (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -187,30 +215,50 @@ Sections
 - Level: MUST (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
 - Text: Any request hook is idempotent: it runs on the initial 402 and again on credential submission and must not create duplicate orders or produce a different request for the same input.
 
-## SYS-012 verify fails closed
+## SYS-012 Verification and settlement fail closed
 - Spec: sdk (Gotchas)
 - Level: MUST (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
-- Text: The server verify step returns a success receipt only after every check and the settlement succeeded; any failed, skipped or errored check (including node errors) throws and no resource is delivered.
+- Text: The server method implements the `validate` hook (credential checks, no chain writes) and the `broadcast` hook (settlement) of `Method.toServer`, not the deprecated `verify` hook; a success receipt is returned only after every check and the settlement succeeded; any failed, skipped or errored check (including node errors) throws and no resource is delivered.
+- Note: Hook names as documented on mpp.dev (read 12 Nov 2026); for the hash type there is nothing to broadcast and the on-chain lookup is part of validation.
 
 ## SYS-013 Client cleanup
 - Spec: sdk (Advanced SDK patterns)
 - Level: SHOULD (project)
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
 - Text: If the client opens connections or listeners (for example node subscriptions), the method exposes `cleanup()` that releases them.
+
+## SYS-014 Permit2 deployments per network
+- Spec: project; charge §4.2, 10.5; session §8.2
+- Level: MUST (project)
+- Role: SDK
+- Verification: ST
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: The SDK ships the Permit2 contract address for each supported network: mainnet (728126428) TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9, Nile (3448148188) TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs; a network without an entry (Shasta at present) does not offer permit2, charge splits or Permit2-funded session actions; server and client use this table as the only source of the address, and an application override must be set explicitly on both sides.
+- Note: Addresses supplied by the project owner on 12 Nov 2026 (decision D3); the Nile entry is provisional ("for now"). Neither address has been checked on-chain as part of writing this requirement; SYS-514 covers that.
 
 
 # 2. Request flow
@@ -268,7 +316,7 @@ the credential type and is expanded in section 6.
 | (1)-(2) challenge issuance | SYS-101..SYS-115, SYS-119..SYS-125, SYS-201..SYS-214 |
 | (3) client fulfilment | SYS-304, SYS-305, SYS-310..SYS-330 |
 | (4) credential transport | SYS-116..SYS-118, SYS-301..SYS-303 |
-| (5) verification and settlement | SYS-401..SYS-405, SYS-501..SYS-513, SYS-710..SYS-713 |
+| (5) verification and settlement | SYS-401..SYS-405, SYS-501..SYS-514, SYS-710..SYS-713 |
 | (6) success response | SYS-601, SYS-124 |
 | any rejection | SYS-602, SYS-701..SYS-705 |
 
@@ -277,6 +325,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx
+- Release: R1
 - Source: BASE-001, BASE-008
 - TRON: same
 - Status: open
@@ -287,6 +337,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: app
+- Release: R1
 - Source: BASE-009
 - TRON: same
 - Status: open
@@ -297,6 +349,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: app
+- Release: R1
 - Source: BASE-010
 - TRON: same
 - Status: open
@@ -307,6 +361,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-011, BASE-012, BASE-013
 - TRON: same
 - Status: open
@@ -317,6 +373,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-016, EVM-001, SES-040
 - TRON: same
 - Status: open
@@ -327,6 +385,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD/MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-018
 - TRON: same
 - Status: open
@@ -337,6 +397,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD/MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-017, BASE-028
 - TRON: same
 - Status: open
@@ -347,6 +409,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-023
 - TRON: same
 - Status: open
@@ -357,6 +421,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-019
 - TRON: same
 - Status: open
@@ -367,6 +433,8 @@ the credential type and is expanded in section 6.
 - Level: MUST/MAY
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-024, BASE-044
 - TRON: same
 - Status: open
@@ -377,6 +445,8 @@ the credential type and is expanded in section 6.
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-025, BASE-027
 - TRON: same
 - Status: open
@@ -387,6 +457,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-026
 - TRON: same
 - Status: open
@@ -397,6 +469,8 @@ the credential type and is expanded in section 6.
 - Level: MAY/SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-035
 - TRON: same
 - Status: open
@@ -407,6 +481,8 @@ the credential type and is expanded in section 6.
 - Level: MAY
 - Role: Client
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-036
 - TRON: same
 - Status: open
@@ -417,6 +493,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD/MUST/MAY
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-037, BASE-038
 - TRON: same
 - Status: open
@@ -427,6 +505,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-020
 - TRON: same
 - Status: open
@@ -437,6 +517,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-021, BASE-022
 - TRON: same
 - Status: open
@@ -447,6 +529,8 @@ the credential type and is expanded in section 6.
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-060
 - TRON: same
 - Status: open
@@ -457,6 +541,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD/MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-045
 - TRON: same
 - Status: open
@@ -467,6 +553,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx
+- Release: R1
 - Source: BASE-051
 - TRON: same
 - Status: open
@@ -477,6 +565,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx/app
+- Release: R1
 - Source: BASE-052, SES-120
 - TRON: same
 - Status: open
@@ -487,6 +577,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: app
+- Release: R1
 - Source: BASE-006
 - TRON: same
 - Status: open
@@ -497,6 +589,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-046
 - TRON: same
 - Status: open
@@ -507,6 +601,8 @@ the credential type and is expanded in section 6.
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-057
 - TRON: same
 - Status: open
@@ -517,6 +613,8 @@ the credential type and is expanded in section 6.
 - Level: SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: sdk/app
+- Release: R1
 - Source: BASE-042
 - TRON: same
 - Status: open
@@ -527,6 +625,8 @@ the credential type and is expanded in section 6.
 - Level: MUST (project)
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -555,6 +655,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-002
 - TRON: same
 - Status: open
@@ -565,6 +667,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Both
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -575,6 +679,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-003, SES-006
 - TRON: review
 - Status: open
@@ -586,17 +692,21 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-004
-- TRON: review
+- TRON: adapt
 - Status: open
-- Text: All TRON-specific fields are nested under methodDetails; methodDetails.chainId is a required number identifying the TRON network; permit2Address is present whenever permit2 is an accepted credential type.
-- Note: Decision D2 -- the EVM draft makes permit2Address always required with a canonical default; TRON has no canonical Permit2 address, so it is proposed as required only when permit2 is offered.
+- Text: All TRON-specific fields are nested under methodDetails; methodDetails.chainId is a required number identifying the TRON network; methodDetails.permit2Address is required and equals the Permit2 deployment of SYS-014 for that chainId.
+- Note: Decision D2 (resolved): always required, as in the EVM draft. TRON has no canonical cross-chain Permit2 address, so there is no default; a server on a network without a listed deployment cannot issue challenges that need this field until one is added to SYS-014.
 
 ## SYS-205 Client rejects unsupported chainId
 - Spec: charge §4.2.1
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-005
 - TRON: same
 - Status: open
@@ -607,6 +717,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-006
 - TRON: same
 - Status: open
@@ -617,17 +729,21 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-008
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: A server that supports permit2 lists it first; the client uses the first listed type it supports.
-- Note: Depends on decision D3 (Permit2 on TRON).
+- Note: Decision D3 (resolved): permit2 is supported on the networks listed in SYS-014.
 
 ## SYS-208 authorization only for supporting tokens
 - Spec: charge §4.2.2, 5.3.2
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R3
 - Source: EVM-007
 - TRON: review
 - Status: open
@@ -639,6 +755,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MAY/MUST (project)
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -649,6 +767,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-010
 - TRON: same
 - Status: open
@@ -659,6 +779,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-011, EVM-012
 - TRON: same
 - Status: open
@@ -669,17 +791,21 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-009
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: The server rejects a challenge with splits that is fulfilled with a transaction, authorization or hash credential, and settles nothing on-chain for it.
-- Note: Depends on decision D3; without Permit2 on TRON the server must not issue splits at all.
+- Note: Decision D3 (resolved): splits are in scope on the networks listed in SYS-014; on a network without a Permit2 deployment the server does not issue splits.
 
 ## SYS-213 Transfer ordering and primary remainder
 - Spec: charge §4.2.3
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-013
 - TRON: same
 - Status: open
@@ -690,6 +816,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: SHOULD
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-042
 - TRON: same
 - Status: open
@@ -703,6 +831,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-029, BASE-030, SES-064
 - TRON: same
 - Status: open
@@ -713,6 +843,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-031
 - TRON: same
 - Status: open
@@ -723,6 +855,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: SHOULD
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-014, SES-066
 - TRON: review
 - Status: open
@@ -734,16 +868,21 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: mppx/sdk
+- Release: R1
 - Source: BASE-039, BASE-054, EVM-038
 - TRON: same
 - Status: open
-- Text: Before signing or broadcasting, and regardless of any Accept-Payment sent, the client parses the request and checks amount, currency, recipient, chainId, splits and the validity window against its configured policy (maximum amount, allowed tokens and networks); a failed check produces no signature and no transaction.
+- Text: Before signing or broadcasting, and regardless of any Accept-Payment sent, the client parses the request and checks amount, currency, recipient, chainId, splits and the validity window against its configured policy: `maxAmount` (highest amount per payment), `currencies` (allowed token contracts) and the supported chain IDs of SYS-007; a failed check produces no signature and no transaction.
+- Note: Option names follow the `mppx` client options documented on mpp.dev (read 12 Nov 2026); confirm against the library when implementing.
 
 ## SYS-305 Origin display and user confirmation
 - Spec: base §11.11
 - Level: SHOULD
 - Role: Client
 - Verification: ST
+- Implementer: sdk/app
+- Release: R1
 - Source: BASE-058
 - TRON: same
 - Status: open
@@ -754,6 +893,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-024
 - TRON: adapt
 - Status: open
@@ -765,6 +906,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -775,6 +918,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-025
 - TRON: adapt
 - Status: open
@@ -786,28 +931,34 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-015, EVM-016
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: The permit2 payload has type, permit {permitted, nonce, deadline}, transferDetails, witness and signature; permitted is always an array (length 1 for a single transfer), each token equals currency, and transferDetails has the same length.
-- Note: Decision D3 -- which Permit2 deployment(s) on TRON are supported and whether TIP-712 signing matches the contract's domain separator.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
 
 ## SYS-321 Permit2 witness and challengeHash
 - Spec: charge §5.2.3
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: EVM-017, EVM-018
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the witness carries challengeHash and externalId (empty string when the request has none); typed data uses the exact witness type string of the spec and is signed per TIP-712.
-- Note: The type string is garbled in the text rendering of the draft; take it from the canonical source. Part of decision D3.
+- Note: The type string is garbled in the text rendering of the draft; take it from the canonical source and confirm it against the deployed contract (SYS-514).
 
 ## SYS-330 Authorization payload
 - Spec: charge §5.3, 5.3.1, 5.3.2
 - Level: MUST/SHOULD
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R3
 - Source: EVM-021, EVM-022, EVM-023
 - TRON: review
 - Status: open
@@ -826,6 +977,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx/sdk
+- Release: R1
 - Source: EVM-026
 - TRON: same
 - Status: open
@@ -836,6 +989,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: adapt
 - Status: open
@@ -847,6 +1002,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: adapt
 - Status: open
@@ -858,17 +1015,21 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-027
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: Before submitting: the TIP-712 signature recovers to the source address; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request.
-- Note: Decision D3.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
 
 ## SYS-405 Authorization pre-submit verification
 - Spec: charge §6.2 steps 1-7
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R3
 - Source: -
 - TRON: review
 - Status: open
@@ -967,6 +1128,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-030
 - TRON: adapt
 - Status: open
@@ -977,6 +1140,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-031
 - TRON: adapt
 - Status: open
@@ -987,6 +1152,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: SES-093, SES-094
 - TRON: new
 - Status: open
@@ -998,6 +1165,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -1009,6 +1178,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: adapt
 - Status: open
@@ -1020,6 +1191,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-032, SES-141
 - TRON: review
 - Status: open
@@ -1031,6 +1204,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST (project)
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: SES-095
 - TRON: new
 - Status: open
@@ -1042,17 +1217,21 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-019, EVM-028
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: After SYS-404 passes the server submits permitWitnessTransferFrom for a single transfer or permitBatchWitnessTransferFrom for splits, then requires SYS-503, SYS-505 and SYS-506; a batch settles all transfers in one transaction or none.
-- Note: Decision D3.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
 
 ## SYS-509 Authorization charge flow
 - Spec: charge §6.2 steps 8-10, 7.2
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R3
 - Source: EVM-029
 - TRON: review
 - Status: open
@@ -1064,6 +1243,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-020, EVM-040
 - TRON: adapt
 - Status: open
@@ -1074,6 +1255,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-041
 - TRON: adapt
 - Status: open
@@ -1084,6 +1267,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST (project)
 - Role: Client
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -1095,10 +1280,25 @@ Permit2 and authorization flows (server submits and pays):
 - Level: SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
 - Text: Settlement data comes only from the configured, trusted TRON node(s); node errors, timeouts and inconsistent answers are treated as verification failure, never as success.
+
+## SYS-514 Permit2 typed-data compatibility on TRON
+- Spec: project; charge §5.2.3, 6.1; session §10.2.2
+- Level: MUST (project)
+- Role: Both
+- Verification: SIT
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: For each network in SYS-014 the domain separator the SDK computes for Permit2 (name, chainId, verifyingContract in 20-byte form) equals the value returned by DOMAIN_SEPARATOR() of the deployed contract; a witness transfer signed by the SDK client with a TRON wallet per TIP-712 is accepted by that contract (permitWitnessTransferFrom and permitBatchWitnessTransferFrom) and a signature over altered data is rejected.
+- Note: The one remaining technical risk for Permit2 on TRON. Depends on decision D11 (the chainId the contract uses in its domain). A failure here reopens decision D3.
 
 
 # 7. Receipt
@@ -1108,6 +1308,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx/sdk
+- Release: R1
 - Source: BASE-032, BASE-033, EVM-033
 - TRON: adapt
 - Status: open
@@ -1118,6 +1320,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx
+- Release: R1
 - Source: BASE-034, EVM-034
 - TRON: same
 - Status: open
@@ -1131,6 +1335,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-007, BASE-040, BASE-041, EVM-036
 - TRON: same
 - Status: open
@@ -1141,6 +1347,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-002
 - TRON: same
 - Status: open
@@ -1151,6 +1359,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-003
 - TRON: same
 - Status: open
@@ -1161,6 +1371,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: mppx
+- Release: R1
 - Source: BASE-004
 - TRON: same
 - Status: open
@@ -1171,6 +1383,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: mppx/sdk
+- Release: R1
 - Source: BASE-005
 - TRON: same
 - Status: open
@@ -1181,6 +1395,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: BASE-050, EVM-035
 - TRON: adapt
 - Status: open
@@ -1192,6 +1408,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: SHOULD (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R1
 - Source: -
 - TRON: new
 - Status: open
@@ -1202,6 +1420,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: BASE-053
 - TRON: same
 - Status: open
@@ -1212,11 +1432,13 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
 - Source: EVM-039
-- TRON: review
+- TRON: adapt
 - Status: open
-- Text: The server handles an already-consumed Permit2 nonce as a normal verification failure (MUST); the client signs only for a permit2Address on its allowlist of known deployments for that chain (SHOULD).
-- Note: Decision D3.
+- Text: The server handles an already-consumed Permit2 nonce as a normal verification failure (MUST); the client signs only when permit2Address equals the SYS-014 deployment for the challenge chainId (SHOULD).
+- Note: Decision D3 (resolved): the allowlist is the SYS-014 table.
 
 
 # 9. Security and operations
@@ -1226,6 +1448,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: app
+- Release: R1
 - Source: BASE-047, EVM-037
 - TRON: same
 - Status: open
@@ -1236,6 +1460,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: ST/SIT
+- Implementer: sdk/app
+- Release: R1
 - Source: BASE-048
 - TRON: same
 - Status: open
@@ -1246,6 +1472,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: mppx/app
+- Release: R1
 - Source: BASE-049
 - TRON: same
 - Status: open
@@ -1256,6 +1484,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: app
+- Release: R1
 - Source: BASE-055
 - TRON: same
 - Status: open
@@ -1266,6 +1496,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: SHOULD/MUST
 - Role: Both
 - Verification: SIT
+- Implementer: mppx
+- Release: R1
 - Source: BASE-056
 - TRON: same
 - Status: open
@@ -1276,6 +1508,8 @@ Permit2 and authorization flows (server submits and pays):
 - Level: SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: app
+- Release: R1
 - Source: BASE-059
 - TRON: same
 - Status: open
@@ -1293,16 +1527,20 @@ applicability" apply as well and are not repeated.
 - Level: MUST (project)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
-- Text: A `session` factory is exported from `./server` next to `charge`, built on one shared `Method.from` definition with intent `session`; it takes price per unit, currency, recipient (payee), chainId, node endpoint, escrow contract, settlement policy, a payee signer able to pay for settle and close, and a durable `Store`; invalid configuration fails at creation.
+- Text: A `session` factory is exported from `./server` next to `charge`, built on one shared `Method.from` definition with intent `session`; it takes price per unit, currency, recipient (payee), chainId, node endpoint, escrow contract, settlement policy, a payee signer able to pay for settle and close, and a durable `Store`; invalid configuration, including a missing store, fails at creation, not on the first request.
 
 ## SYS-1002 Session client factory
 - Spec: sdk; project
 - Level: MUST (project)
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -1313,6 +1551,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST (project)
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: review
 - Status: open
@@ -1324,6 +1564,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-004, SES-007, SES-009
 - TRON: review
 - Status: open
@@ -1335,6 +1577,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-005
 - TRON: same
 - Status: open
@@ -1345,6 +1589,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Both
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-008
 - TRON: review
 - Status: open
@@ -1356,6 +1602,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-041, SES-043
 - TRON: adapt
 - Status: open
@@ -1366,6 +1614,8 @@ applicability" apply as well and are not repeated.
 - Level: MAY
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-042, SES-044, SES-045
 - TRON: adapt
 - Status: open
@@ -1376,17 +1626,21 @@ applicability" apply as well and are not repeated.
 - Level: MAY/MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-046, SES-049
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: credentialTypes is an ordered list drawn from permit2, authorization and hash (there is no signed-transaction type) and defaults to ["hash"]; with feePayer true the server lists at least one server-submitted type its escrow supports and may add hash as fallback.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1013 Client honors session credentialTypes
 - Spec: session §8.2, 9.1, 9.2
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-047
 - TRON: same
 - Status: open
@@ -1397,28 +1651,34 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-016, SES-055
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: The server advertises feePayer true, a server-submitted type or relayed settle/close only when the configured escrow implements the backing function and the currency token supports that path.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1015 permit2Contract advertisement
 - Spec: session §8.2, 10.2.2
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-048
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: When permit2 is offered the server advertises methodDetails.permit2Contract, the client uses it as verifyingContract, and it equals the Permit2 address configured in the escrow.
-- Note: Decision D3 -- no canonical Permit2 address on TRON, so the field is always required when permit2 is offered.
+- Note: Decision D3 (resolved): the value is the SYS-014 deployment for the chainId; the field is always required when permit2 is offered.
 
 ## SYS-1016 Well-behaved tokens only
 - Spec: session §7
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-010
 - TRON: review
 - Status: open
@@ -1430,6 +1690,8 @@ applicability" apply as well and are not repeated.
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-129
 - TRON: same
 - Status: open
@@ -1447,6 +1709,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-014
 - TRON: same
 - Status: open
@@ -1457,6 +1721,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-011
 - TRON: review
 - Status: open
@@ -1468,6 +1734,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-017
 - TRON: adapt
 - Status: open
@@ -1479,6 +1747,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-013, SES-018
 - TRON: same
 - Status: open
@@ -1489,6 +1759,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-022, SES-023
 - TRON: same
 - Status: open
@@ -1499,6 +1771,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-024, SES-025
 - TRON: same
 - Status: open
@@ -1509,6 +1783,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST/MAY
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-028, SES-029
 - TRON: same
 - Status: open
@@ -1519,6 +1795,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-030
 - TRON: same
 - Status: open
@@ -1529,6 +1807,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-031, SES-032
 - TRON: same
 - Status: open
@@ -1539,6 +1819,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-037, SES-038
 - TRON: same
 - Status: open
@@ -1549,6 +1831,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: SHOULD
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-039
 - TRON: same
 - Status: open
@@ -1559,6 +1843,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-033, SES-034, SES-036
 - TRON: adapt
 - Status: open
@@ -1570,6 +1856,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST (implied)
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-035
 - TRON: adapt
 - Status: open
@@ -1581,6 +1869,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-128, SES-130
 - TRON: same
 - Status: open
@@ -1591,6 +1881,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-139
 - TRON: same
 - Status: open
@@ -1601,6 +1893,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: SHOULD (project)
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: -
 - TRON: review
 - Status: open
@@ -1612,17 +1906,21 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MAY
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-015
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: openWithAuthorization, topUpWithAuthorization, openWithPermit2, topUpWithPermit2, settleWithAuthorization and closeWithAuthorization may be omitted or implemented in any subset.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): the reference escrow implements openWithPermit2 and topUpWithPermit2; the authorization variants are conditional on decision D4.
 
 ## SYS-1121 Relayed open with token authorization
 - Spec: session §7.1, 7.3.2, 7.4, 15.13
 - Level: MUST/SHOULD
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R3
 - Source: SES-012, SES-019, SES-020
 - TRON: review
 - Status: open
@@ -1634,28 +1932,34 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-021
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: openWithPermit2 uses permitWitnessTransferFrom with a witness binding payee, salt and authorizedSigner, so a signature over other channel parameters reverts.
-- Note: Decision D3.
+- Note: Decision D3 (resolved): the escrow is deployed with the SYS-014 Permit2 address of its network.
 
 ## SYS-1123 Relayed top-up
 - Spec: session §7.3.6, 7.3.7, 9.4.1, 15.13
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2/R3
 - Source: SES-026, SES-027, SES-057
 - TRON: review
 - Status: open
 - Text: topUpWithAuthorization validates the nonce keccak256(abi.encode(channelId, additionalDeposit, from, topUpSalt)); topUpWithPermit2 binds channelId as witness and uses the channel's token; the funder need not be the payer, and refunds still go to channel.payer.
-- Note: Decisions D3 and D4.
+- Note: Permit2 half: decision D3 (resolved, SYS-014). Authorization half: decision D4, still open, which keeps this requirement at review.
 
 ## SYS-1124 Payee-authorized settle and close
 - Spec: session §9.4.2
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-058, SES-059, SES-060
 - TRON: adapt
 - Status: open
@@ -1667,6 +1971,8 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - Level: MUST
 - Role: Contract
 - Verification: CT
+- Implementer: contract
+- Release: R2
 - Source: SES-061, SES-062
 - TRON: same
 - Status: open
@@ -1690,6 +1996,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-067
 - TRON: same
 - Status: open
@@ -1700,6 +2008,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-065
 - TRON: same
 - Status: open
@@ -1711,6 +2021,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-068
 - TRON: adapt
 - Status: open
@@ -1722,6 +2034,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-069
 - TRON: same
 - Status: open
@@ -1732,6 +2046,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-078
 - TRON: adapt
 - Status: open
@@ -1742,6 +2058,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-081
 - TRON: same
 - Status: open
@@ -1752,6 +2070,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-086
 - TRON: same
 - Status: open
@@ -1762,17 +2082,21 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-070
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: payload has action open, type authorization or permit2, channelId, authorization, signature, cumulativeAmount, voucherSignature and salt; authorizedSigner is optional.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1211 Token authorization object and nonce
 - Spec: session §7.3.6, 10.2.2, 15.13
 - Level: MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R3
 - Source: SES-071, SES-072
 - TRON: review
 - Status: open
@@ -1784,39 +2108,47 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-054, SES-073, SES-074, SES-075, SES-077
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: For type permit2 the object has from, permitted {token = currency, amount = deposit}, nonce, deadline and witness; the spender is the escrow contract; the witness carries payee, salt and authorizedSigner (zero address when omitted) for open or channelId for topUp; domain and type strings are those of the spec; the payer has approved the Permit2 contract beforehand.
-- Note: Decision D3.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
 
 ## SYS-1213 TopUp payload, server-submitted
 - Spec: session §10.2.3
 - Level: MUST
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-079, SES-080
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: payload has action topUp, type, channelId, authorization, signature and additionalDeposit (plus salt for type authorization); additionalDeposit equals the authorized amount and the server rejects a mismatch.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1214 Voucher deposit extension
 - Spec: session §10.2.4
 - Level: MAY/MUST
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-082, SES-083, SES-085
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: A voucher payload may carry a deposit object (action, type, authorization, signature, salt where required, optional authorizedSigner for open); an omitted authorizedSigner means the zero address; for an existing channel deposit.action is topUp.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1301 Voucher typed data
 - Spec: session §11.1, 11.2, 11.3, 15.3
 - Level: MUST (implied)
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-087, SES-088, SES-089
 - TRON: review
 - Status: open
@@ -1828,6 +2160,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST (implied)
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-090
 - TRON: same
 - Status: open
@@ -1838,6 +2172,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-050, SES-136
 - TRON: adapt
 - Status: open
@@ -1848,6 +2184,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-051
 - TRON: same
 - Status: open
@@ -1858,6 +2196,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST (implied)/SHOULD
 - Role: Client
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-056, SES-142
 - TRON: adapt
 - Status: open
@@ -1869,6 +2209,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: SHOULD/MAY
 - Role: Both
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-001
 - TRON: same
 - Status: open
@@ -1879,6 +2221,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Client
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-119
 - TRON: same
 - Status: open
@@ -1889,6 +2233,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: SHOULD
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-131
 - TRON: same
 - Status: open
@@ -1899,6 +2245,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: SHOULD
 - Role: Both
 - Verification: ST
+- Implementer: sdk/app
+- Release: R2
 - Source: SES-143, SES-144
 - TRON: same
 - Status: open
@@ -1909,6 +2257,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST (project)
 - Role: Client
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -1919,6 +2269,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST (project)
 - Role: Client
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -1933,6 +2285,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-092
 - TRON: same
 - Status: open
@@ -1944,6 +2298,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-096
 - TRON: adapt
 - Status: open
@@ -1955,6 +2311,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-097
 - TRON: same
 - Status: open
@@ -1965,6 +2323,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-098
 - TRON: same
 - Status: open
@@ -1975,17 +2335,21 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-053, SES-076, SES-099
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: With feePayer true the client sends a token-pull authorization instead of broadcasting; the server validates its fields and signature, rejects a Permit2 witness that disagrees with the channel parameters, submits the matching escrow function at its own cost and then runs SYS-1403.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1406 TopUp by hash
 - Spec: session §12.4
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-100
 - TRON: adapt
 - Status: open
@@ -1996,28 +2360,34 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-101
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: For topUp with a server-submitted type the server validates the authorization, submits the matching escrow function, verifies the updated channel and updates its balance.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1408 Deposit before voucher
 - Spec: session §10.2.4, 12.5
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-084
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: When a voucher carries a deposit object the server processes the deposit first, verifies the resulting channel state, then validates the voucher; a failed deposit rejects the whole credential.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1410 No vouchers while a close is pending
 - Spec: session §12.5
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-102
 - TRON: same
 - Status: open
@@ -2028,6 +2398,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-103, SES-104
 - TRON: adapt
 - Status: open
@@ -2039,6 +2411,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST/MAY
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-105, SES-109
 - TRON: same
 - Status: open
@@ -2049,6 +2423,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-091, SES-106, SES-107
 - TRON: same
 - Status: open
@@ -2059,6 +2435,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-108
 - TRON: same
 - Status: open
@@ -2069,6 +2447,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-003
 - TRON: same
 - Status: open
@@ -2079,6 +2459,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Level: SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-002
 - TRON: same
 - Status: open
@@ -2173,6 +2555,8 @@ Ending the channel:
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -2183,6 +2567,8 @@ Ending the channel:
 - Level: MUST (project)
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -2193,6 +2579,8 @@ Ending the channel:
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -2203,6 +2591,8 @@ Ending the channel:
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-063, SES-124
 - TRON: adapt
 - Status: open
@@ -2213,6 +2603,8 @@ Ending the channel:
 - Level: MUST/SHOULD
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-125, SES-126, SES-127
 - TRON: adapt
 - Status: open
@@ -2223,6 +2615,8 @@ Ending the channel:
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
 - TRON: new
 - Status: open
@@ -2233,17 +2627,21 @@ Ending the channel:
 - Level: MUST
 - Role: Both
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: -
-- TRON: review
+- TRON: adapt
 - Status: open
 - Text: With feePayer true the client makes no transaction: it signs a funding authorization and the initial voucher, the server submits the relayed escrow function and pays for it, and the resulting channel has the client as payer.
-- Note: Decision D12.
+- Note: Decision D12 (resolved): server-paid funding uses type permit2; type authorization stays conditional on decision D4.
 
 ## SYS-1508 Idle channels are settled and closed
 - Spec: session §15.11, 15.17
 - Level: SHOULD
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-140
 - TRON: same
 - Status: open
@@ -2254,6 +2652,8 @@ Ending the channel:
 - Level: MUST (implied)
 - Role: Server
 - Verification: SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-052
 - TRON: adapt
 - Status: open
@@ -2268,6 +2668,8 @@ Ending the channel:
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-114
 - TRON: same
 - Status: open
@@ -2278,6 +2680,8 @@ Ending the channel:
 - Level: MUST (implied)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-115
 - TRON: same
 - Status: open
@@ -2288,6 +2692,8 @@ Ending the channel:
 - Level: MUST (implied)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-116
 - TRON: same
 - Status: open
@@ -2298,6 +2704,8 @@ Ending the channel:
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-117, SES-118
 - TRON: same
 - Status: open
@@ -2308,6 +2716,8 @@ Ending the channel:
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
+- Implementer: sdk/app
+- Release: R2
 - Source: SES-122, SES-123
 - TRON: same
 - Status: open
@@ -2318,6 +2728,8 @@ Ending the channel:
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-121
 - TRON: same
 - Status: open
@@ -2328,6 +2740,8 @@ Ending the channel:
 - Level: MUST/MAY
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-132, SES-133
 - TRON: same
 - Status: open
@@ -2338,6 +2752,8 @@ Ending the channel:
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-134, SES-135
 - TRON: adapt
 - Status: open
@@ -2353,6 +2769,8 @@ Ending the channel:
 - Level: MUST (implied)
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-110
 - TRON: same
 - Status: open
@@ -2363,6 +2781,8 @@ Ending the channel:
 - Level: MUST
 - Role: Server
 - Verification: ST
+- Implementer: sdk
+- Release: R2
 - Source: SES-111
 - TRON: same
 - Status: open
@@ -2374,6 +2794,8 @@ Ending the channel:
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-112, SES-113
 - TRON: adapt
 - Status: open
@@ -2389,6 +2811,8 @@ Ending the channel:
 - Level: SHOULD
 - Role: Server
 - Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
 - Source: SES-137, SES-138
 - TRON: adapt
 - Status: open
@@ -2397,13 +2821,13 @@ Ending the channel:
 
 # 18. Open decisions
 
-Requirements marked `TRON: review` depend on these. Resolve, then update the requirement and set TRON to adapt or the Status to n/a.
+Requirements marked `TRON: review` depend on the decisions still open. Resolve, then update the requirement and set TRON to adapt or the Status to n/a. Resolved decisions stay listed for the record.
 
 | ID | Decision | Affects |
 |---|---|---|
 | D1 | Wire format of addresses and hex values: Base58Check addresses (proposed) or 0x hex as in the EVM drafts; 0x prefix on hashes and channelId | SYS-203, SYS-1004 |
-| D2 | permit2Address required always, or only when permit2 is offered (proposed) | SYS-204 |
-| D3 | Permit2 on TRON: supported deployment address(es) per network, TIP-712 domain compatibility, or drop permit2 (and charge splits) from the first release | SYS-207, SYS-212, SYS-320, SYS-321, SYS-404, SYS-508, SYS-713, SYS-1015, SYS-1122, SYS-1123, SYS-1212 |
+| D2 | RESOLVED 12 Nov 2026: permit2Address is always required; no default, value from SYS-014 | SYS-204 |
+| D3 | RESOLVED 12 Nov 2026: Permit2 is in the first release; deployments in SYS-014 (mainnet TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9, Nile TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs, provisional). TIP-712 domain compatibility is verified by SYS-514, not assumed | SYS-014, SYS-207, SYS-212, SYS-320, SYS-321, SYS-404, SYS-508, SYS-514, SYS-713, SYS-1015, SYS-1122, SYS-1123, SYS-1212 |
 | D4 | Token authorization (EIP-3009 semantics): any target TRC-20 implementing transferWithAuthorization (charge) and receiveWithAuthorization (session), or n/a | SYS-208, SYS-330, SYS-405, SYS-509, SYS-1121, SYS-1123, SYS-1211 |
 | D5 | source DID form for TRON addresses | SYS-303 |
 | D6 | Encoding of the signed transaction in payload.signature | SYS-310 |
@@ -2411,8 +2835,8 @@ Requirements marked `TRON: review` depend on these. Resolve, then update the req
 | D8 | Duplicate-transaction answer from the node on broadcast | SYS-504 |
 | D9 | Default confirmation policy: first block or solidified (for session it delays every open and top-up) | SYS-506 |
 | D10 | Behavior while a settlement outcome is unknown (timeout) | SYS-507, SYS-512 |
-| D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt | SYS-1006, SYS-1102, SYS-1301 |
-| D12 | Server-paid session funding (feePayer true): depends on D3 or D4; if neither exists on TRON, drop it or define a TRON mechanism (for example resource delegation to the payer) | SYS-1012, SYS-1014, SYS-1120, SYS-1210, SYS-1213, SYS-1214, SYS-1405, SYS-1407, SYS-1408, SYS-1507 |
+| D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt | SYS-514, SYS-1006, SYS-1102, SYS-1301 |
+| D12 | RESOLVED 12 Nov 2026: server-paid session funding (feePayer true) uses Permit2; the authorization variants depend on D4 | SYS-1012, SYS-1014, SYS-1120, SYS-1210, SYS-1213, SYS-1214, SYS-1405, SYS-1407, SYS-1408, SYS-1507 |
 | D13 | Target tokens for session: verify transfer behavior of each TRC-20 (return values, fee parameters) | SYS-1016, SYS-1103 |
 | D14 | Reference escrow: who deploys and owns it per network; immutable without admin (proposed) or with pause/upgrade | SYS-1003, SYS-1116 |
 | D15 | Voucher typed-data domain name and version for TRON | SYS-1301 |
