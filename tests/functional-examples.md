@@ -1,7 +1,7 @@
 # Example test cases (replace or delete)
 
 ## TC-001 Replay of a consumed credential is rejected
-Covers: EVM-035, EVM-036, BASE-003, BASE-050
+Covers: SYS-710, SYS-701, SYS-703
 Layer: system
 Status: draft
 Env: Nile testnet
@@ -17,7 +17,7 @@ Env: Nile testnet
 - Second request returns 402 with a fresh challenge and a problem+json body; no Payment-Receipt header.
 
 ## TC-002 Splits rejected for non-permit2 credential types
-Covers: EVM-009, EVM-036
+Covers: SYS-212, SYS-701
 Layer: method
 Status: draft
 Env: local compliance server

@@ -13,9 +13,6 @@ Baseline
 - session = `draft-evm-session-00` (11 Nov 2026, expires 15 May 2027) -> `evm-session.md` (SES-xxx)
 - sdk    = mpp.dev "Custom payment methods" page, First-party SDK section and Gotchas (read 12 Nov 2026)
 
-Merge rule: the charge and session drafts win where they are specific; the base draft fills every gap. Each
-BASE/EVM/SES requirement is carried by exactly one SYS requirement (see the source map at the end), so SYS is the only ID set
-tests need to cover. A requirement that both intents share is written once, in the charge or common block.
 
 Intent applicability
 - Both intents: SYS-0xx (SDK), SYS-1xx (request flow), SYS-203 (addresses), SYS-301..305 (credential framing and
@@ -25,8 +22,7 @@ Intent applicability
 - Session only: SYS-10xx..SYS-18xx
 
 System boundary
-- The system: the TRON MPP first-party SDK (shared method definitions, SDK client, SDK server, wired into `mppx`) and,
-  for the session intent, the channel escrow contract. The contract is a deliverable next to the SDK package.
+- The system: the TRON MPP first-party SDK and, for the session intent, the channel escrow contract. The contract is a deliverable next to the SDK package.
 - External to the system: the TRON network and its nodes, the TRC-20 token contracts, Permit2, and the applications
   that embed the SDK client or the SDK server. The system interacts with them; it does not specify them.
 - The requirements describe behavior observable at that boundary (HTTP messages, signed data, transactions and
@@ -37,7 +33,7 @@ than one level.
 - ST = System test: the SDK client and SDK server as a whole, with the TRON network simulated by a mock or stub node.
   Covers framing, schemas, verification logic and HTTP behavior.
 - SIT = System integration test (end-to-end): the system together with a live TRON network (Nile testnet by default,
-  chain ID 3448148188) and a TRC-20 test token. Covers everything that needs real blocks, resources
+  chain ID 3448148188) and a TRC-20 test token (USDT clone for permit2,transfer,hash and USDC clone for TRC-3009). Covers everything that needs real blocks, resources
   (Energy/Bandwidth) and node responses. For session this includes the deployed channel escrow contract.
 - CT = Component test: the channel escrow contract by itself, called directly on a TRON network or local TVM without
   the SDK. Session only.
@@ -62,7 +58,7 @@ Field guide
 - Status: open | n/a (give reason) | doc (covered by at least one test case)
 - Note: TRON adaptation detail or open question (optional)
 
-Rules: IDs are permanent; never renumber or reuse; mark deprecated instead. IDs are grouped in blocks of 100 per
+Important: IDs are permanent; never renumber or reuse; mark deprecated instead. IDs are grouped in blocks of 100 per
 section so new requirements can be added next to related ones.
 Parser contract: each requirement starts with `## <ID> <title>` and uses `- Key: value` lines.
 
