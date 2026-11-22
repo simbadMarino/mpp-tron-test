@@ -179,7 +179,7 @@ Sections
 - Release: R1
 - Source: -
 - TRON: new
-- Status: open
+- Status: doc
 - Text: The SDK supports TRON mainnet (728126428), Nile (3448148188) and Shasta (2494104990); the configured node endpoint must report the configured chainId, otherwise the server refuses to start issuing challenges.
 
 ## SYS-009 Exact amount arithmetic
@@ -247,14 +247,14 @@ Sections
 - Spec: project; charge §4.2, 10.5; session §8.2
 - Level: MUST (project)
 - Role: SDK
-- Verification: ST
+- Verification: ST/SIT
 - Implementer: sdk
 - Release: R1
 - Source: -
 - TRON: new
 - Status: open
 - Text: The SDK ships the Permit2 contract address for each supported network: mainnet (728126428) TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9, Nile (3448148188) TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs; a network without an entry (Shasta at present) does not offer permit2, charge splits or Permit2-funded session actions; server and client use this table as the only source of the address, and an application override must be set explicitly on both sides.
-- Note: Addresses supplied by the project owner on 12 Nov 2026 (decision D3); the Nile entry is provisional ("for now"). Neither address has been checked on-chain as part of writing this requirement; SYS-514 covers that.
+- Note: Addresses supplied by the project owner on 12 Nov 2026 (decision D3); the Nile entry is provisional ("for now"). Checked on-chain 22 Nov 2026 (ABI and DOMAIN_SEPARATOR() read through a TRON node): both are named Permit2, have identical ABIs including both permitWitnessTransferFrom overloads, and their domain separators (0x14564e8c2e3290aa3b797863206f2ec2fc430355f335dfa38a1b500c9e14d789 mainnet, 0x281a5a8c4ee133bdb1e50c3d557460976368a768fcd025448ae2d619b72fd126 Nile) equal the standard Permit2 domain (name "Permit2", TRON chainId, 20-byte contract address). The bytecode of the two is not identical (same length, jump offsets shifted), which points to a different build of the same source; confirm verified source per address. SYS-514 still verifies an actual signed transfer.
 
 
 # 2. Request flow
@@ -325,8 +325,9 @@ the credential type and is expanded in section 6.
 - Release: R1
 - Source: BASE-001, BASE-008
 - TRON: same
-- Status: open
+- Status: doc
 - Text: A request for a paid resource without a credential gets 402 with a WWW-Authenticate header carrying at least one fresh Payment challenge (method=tron, intent=charge or session); 402 is never returned without one.
+- Note: Request flow steps (1)-(2). "Without a credential" means no Authorization: Payment header (or other selected field, SYS-116) at all; a request that carries a credential is step (4) and is handled by SYS-112, SYS-401 and SYS-701..SYS-705.
 
 ## SYS-102 When to return 402 (and when not)
 - Spec: base §4.4.1, 4.4.2
@@ -337,7 +338,7 @@ the credential type and is expanded in section 6.
 - Release: R1
 - Source: BASE-009
 - TRON: same
-- Status: open
+- Status: doc
 - Text: 402 is returned when payment is the primary barrier and a challenge can be built; not for missing authentication (401), missing authorization (403), nonexistent resources (404) or when no challenge can be constructed.
 
 ## SYS-103 Authenticate before challenging for payment
@@ -554,18 +555,18 @@ the credential type and is expanded in section 6.
 - Source: BASE-051
 - TRON: same
 - Status: open
-- Text: A request that ends in 402 changes no server state beyond recording the challenge, runs no application handler and causes no transaction to be broadcast to the TRON network.
+- Text: A request that ends in 402 changes no server state beyond recording the challenge and causes no transaction to be broadcast to the TRON network.
 
 ## SYS-121 Idempotency-Key support
 - Spec: base §11.4
 - Level: SHOULD
 - Role: Server
 - Verification: ST/SIT
-- Implementer: mppx/app
+- Implementer: app
 - Release: R1
 - Source: BASE-052, SES-120
 - TRON: same
-- Status: open
+- Status: n/a (application concern: replaying the stored response needs the application to keep its results; no second settlement is verified by SYS-710 and SYS-712; client-side key handling left to the application)
 - Text: Clients include Idempotency-Key on paid requests (SHOULD, session); for POST/PUT/DELETE the server accepts Idempotency-Key; a retry with the same key and a valid credential returns the original response without re-executing the handler or settling again.
 
 ## SYS-122 Valid payment but policy denial -> 403
@@ -948,6 +949,19 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the witness carries challengeHash and externalId (empty string when the request has none); typed data uses the exact witness type string of the spec and is signed per TIP-712.
 - Note: The type string is garbled in the text rendering of the draft; take it from the canonical source and confirm it against the deployed contract (SYS-514).
 
+## SYS-322 Client checks its Permit2 allowance before signing
+- Spec: project; charge §5.2, 10.3
+- Level: MUST (project)
+- Role: Client
+- Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: Before choosing permit2 the client reads, from the TRON network named by chainId, its TRC-20 allowance for permit2Address on currency and its token balance; if either does not cover the total amount (primary plus splits), it does not sign a permit2 credential and instead either uses the next listed credential type it supports, or, when its configuration allows it, sends a TRC-20 approve for permit2Address itself (paying the Energy and Bandwidth) and signs only after that approve is included with a successful result (SYS-503).
+- Note: Counterpart of the server check in SYS-404. Without an allowance a permit2 credential can only fail with verification-failed. For a splits challenge there is no fallback type (SYS-212), so the client approves or does not pay. The approval amount (exact total or a larger standing allowance) is client configuration. Session equivalent: precondition in SYS-1212.
+
 ## SYS-330 Authorization payload
 - Spec: charge §5.3, 5.3.1, 5.3.2
 - Level: MUST/SHOULD
@@ -978,7 +992,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: EVM-026
 - TRON: same
 - Status: open
-- Text: In order: decode the base64url credential and parse the JSON; payload.type is one of the types accepted for the challenge; the challenge is found by id (reject if none); every echoed challenge field matches the stored challenge; a splits challenge is rejected unless payload.type is permit2; then type-specific verification runs.
+- Text: In order: decode the base64url credential and parse the JSON; payload.type is one of the types accepted for the challenge; the challenge is authenticated by its binding (SYS-112), which proves the server issued it and that no echoed field was changed (reject otherwise); a splits challenge is rejected unless payload.type is permit2; then type-specific verification runs.
+- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. Reuse is detected through the consumed set (SYS-710), not by storing challenges.
 
 ## SYS-402 Transaction pre-broadcast verification
 - Spec: charge §6.3 steps 1-5
@@ -1218,8 +1233,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-019, EVM-028
 - TRON: adapt
 - Status: open
-- Text: After SYS-404 passes the server submits permitWitnessTransferFrom for a single transfer or permitBatchWitnessTransferFrom for splits, then requires SYS-503, SYS-505 and SYS-506; a batch settles all transfers in one transaction or none.
-- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
+- Text: After SYS-404 passes the server submits permitWitnessTransferFrom (single overload) for a single transfer or the batch overload of permitWitnessTransferFrom for splits, then requires SYS-503, SYS-505 and SYS-506; a batch settles all transfers in one transaction or none.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514. The EVM draft names the batch call permitBatchWitnessTransferFrom; Permit2 has no function of that name: the batch call is an overload of permitWitnessTransferFrom taking arrays, and PermitBatchWitnessTransferFrom is only the name of its signed typed-data type.
 
 ## SYS-509 Authorization charge flow
 - Spec: charge §6.2 steps 8-10, 7.2
@@ -1293,8 +1308,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: -
 - TRON: new
 - Status: open
-- Text: For each network in SYS-014 the domain separator the SDK computes for Permit2 (name, chainId, verifyingContract in 20-byte form) equals the value returned by DOMAIN_SEPARATOR() of the deployed contract; a witness transfer signed by the SDK client with a TRON wallet per TIP-712 is accepted by that contract (permitWitnessTransferFrom and permitBatchWitnessTransferFrom) and a signature over altered data is rejected.
-- Note: The one remaining technical risk for Permit2 on TRON. Depends on decision D11 (the chainId the contract uses in its domain). A failure here reopens decision D3.
+- Text: For each network in SYS-014 the domain separator the SDK computes for Permit2 (name, chainId, verifyingContract in 20-byte form) equals the value returned by DOMAIN_SEPARATOR() of the deployed contract; a witness transfer signed by the SDK client with a TRON wallet per TIP-712 is accepted by that contract (both overloads of permitWitnessTransferFrom) and a signature over altered data is rejected.
+- Note: The one remaining technical risk for Permit2 on TRON. The domain-separator half was checked by hand on 22 Nov 2026 and matches on both networks (see SYS-014); the test keeps it as a regression check. A failure here reopens decision D3.
 
 
 # 7. Receipt
@@ -1360,7 +1375,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-003
 - TRON: same
 - Status: open
-- Text: An unknown or already-used challenge id, or echoed parameters that fail the binding check, yields the invalid-challenge problem.
+- Text: A challenge id that fails the binding check (not issued by this server, or echoed parameters changed), or a challenge already consumed by an accepted payment (SYS-710), yields the invalid-challenge problem.
+- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. Reuse is detected through the consumed set (SYS-710), not by storing challenges.
 
 ## SYS-704 Expired challenge -> payment-expired
 - Spec: base §4.2, 8.2
@@ -2286,8 +2302,8 @@ Every session credential carries payload.action. Only open and topUp have a payl
 - Source: SES-092
 - TRON: same
 - Status: open
-- Text: Before action-specific checks the server decodes the credential, requires a recognized payload.action, finds the stored challenge by id, requires every echoed challenge field to match and requires the challenge not to be expired.
-- Note: Binding rules: SYS-112.
+- Text: Before action-specific checks the server decodes the credential, requires a recognized payload.action, authenticates the challenge by its binding (no echoed field changed) and requires the challenge not to be expired.
+- Note: Binding rules: SYS-112. Stateless (HMAC) or stored challenges both pass, as for SYS-401.
 
 ## SYS-1402 Open by hash: transaction check
 - Spec: session §12.3
@@ -2831,7 +2847,7 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 | D8 | Duplicate-transaction answer from the node on broadcast | SYS-504 |
 | D9 | Default confirmation policy: first block or solidified (for session it delays every open and top-up) | SYS-506 |
 | D10 | Behavior while a settlement outcome is unknown (timeout) | SYS-507, SYS-512 |
-| D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt | SYS-514, SYS-1006, SYS-1102, SYS-1301 |
+| D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt. PARTLY RESOLVED 22 Nov 2026: the Permit2 domain separators on mainnet and Nile are built with chainId 728126428 and 3448148188, so block.chainid on the TVM returns these values and TIP-712 domains use them (SYS-014). Still to confirm for the escrow and voucher domain by component test | SYS-514, SYS-1006, SYS-1102, SYS-1301 |
 | D12 | RESOLVED 12 Nov 2026: server-paid session funding (feePayer true) uses Permit2; the authorization variants depend on D4 | SYS-1012, SYS-1014, SYS-1120, SYS-1210, SYS-1213, SYS-1214, SYS-1405, SYS-1407, SYS-1408, SYS-1507 |
 | D13 | Target tokens for session: verify transfer behavior of each TRC-20 (return values, fee parameters) | SYS-1016, SYS-1103 |
 | D14 | Reference escrow: who deploys and owns it per network; immutable without admin (proposed) or with pause/upgrade | SYS-1003, SYS-1116 |

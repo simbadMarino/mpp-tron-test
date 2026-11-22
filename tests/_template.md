@@ -4,7 +4,7 @@
 Covers: SYS-000, SYS-000
 Level: system (ST) | system integration / end-to-end (SIT) | component (CT)
 Status: draft | ready | automated | passed | failed | blocked
-Env: e.g. Nile testnet, local compliance server
+Env: e.g. stub TRON node (ST), Nile testnet + TRC-20 test token (SIT), local TVM (CT)
 
 **Preconditions**
 - ...
