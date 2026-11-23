@@ -137,7 +137,7 @@ Env: Nile testnet + TRC-20 test token (SIT)
 3. Client signs EIP-712 permit2 authorization
 4. Client sends proof of payment to server (including off-chain signed TIP-712 Permit2 authorization)
 5. Server executes permitWitnessTransferFrom on-chain txn
-6. Server confirms on-chain txn Receipt indicates success and re
+6. Server confirms on-chain txn Receipt indicates success
 7. Server responds client with 200 OK + Receipt
 
 **Expected result**
@@ -170,7 +170,7 @@ Env: Mainnet testnet + TRC-20 test token (SIT)
 3. Client signs EIP-712 permit2 authorization
 4. Client sends proof of payment to server (including off-chain signed TIP-712 Permit2 authorization)
 5. Server executes permitWitnessTransferFrom on-chain txn
-6. Server confirms on-chain txn Receipt indicates success and re
+6. Server confirms on-chain txn Receipt indicates success
 7. Server responds client with 200 OK + Receipt
 
 **Expected result**
