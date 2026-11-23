@@ -2,38 +2,38 @@
 
 
 
-Ecosystem Development                                         TRON DAO
-Internet-Draft                                              
-Intended status: Informational                             
-Expires: X YYY 202Z                                             
-                                                                
-                                                       
-                                                         X YYYYYYY 202Z
+Internet-Draft                                        TRON MPP Taskforce
+Intended status: Informational                                  TRON DAO
+Expires: 27 May 2027                                    23 November 2026
 
 
-           TRON Charge Intent for HTTP Payment Authentication 
-         draft-TRON-charge-00 (derived from draft-evm-charge-00)
+           TRON Charge Intent for HTTP Payment Authentication
+                          draft-tron-charge-00
 
 Abstract
 
-   This document defines the "charge" intent for the "TRON" payment
+   This document defines the "charge" intent for the "tron" payment
    method in the Payment HTTP Authentication Scheme
    [I-D.httpauth-payment].  It specifies how clients and servers
-   exchange one-time TRC-20 token transfers.
+   exchange one-time TRC-20 token transfers on the TRON network.
 
-   Four credential types are supported: type="permit2" (RECOMMENDED),
+   Four credential types are defined: type="permit2" (RECOMMENDED),
    where the client signs an off-chain Permit2 authorization and the
-   server submits the transfer; type="authorization" (opt-in for
-   TIP-3009 tokens), where the client signs an off-chain transfer
-   authorization and the server submits it directly to the token
-   contract; type="transaction", where the client signs and the server
-   broadcasts a standard TRC-20 transfer transaction; and type="hash"
-   (optional fallback), where the client broadcasts the transaction
-   itself and presents the on-chain transaction hash for server
+   server submits the transfer; type="authorization" (opt-in, only for
+   tokens that implement transferWithAuthorization), where the client
+   signs an off-chain transfer authorization and the server submits it
+   to the token contract; type="transaction", where the client signs
+   and the server broadcasts a TRC-20 transfer transaction; and
+   type="hash" (optional fallback), where the client broadcasts the
+   transaction itself and presents its transaction ID for server
    verification.
 
-   This specification covers TRC-20 token transfers only.  Native token
-   transfers (ETH, etc.) are out of scope.
+   As a TRON extension, a server can sponsor the network resources of
+   a type="transaction" payment by delegating Energy and Bandwidth to
+   the payer, so that a payer holding only TRC-20 tokens can pay.
+
+   This specification covers TRC-20 token transfers only.  Native TRX
+   and TRC-10 transfers are out of scope.
 
 Status of This Memo
 
@@ -50,7 +50,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 6 May 2027.
+   This Internet-Draft will expire on 27 May 2027.
 
 Copyright Notice
 
@@ -66,10 +66,6 @@ Copyright Notice
    described in Section 4.e of the Trust Legal Provisions and are
    provided without warranty as described in the Revised BSD License.
 
-   This document may not be modified, and derivative works of it may not
-   be created, except to format it for publication as an RFC or to
-   translate it into languages other than English.
-
 Table of Contents
 
    1.  Introduction
@@ -78,6 +74,7 @@ Table of Contents
      1.3.  Credential Types
      1.4.  Charge Flow
      1.5.  Relationship to the Charge Intent
+     1.6.  Differences from the EVM Charge Method
    2.  Requirements Language
    3.  Terminology
    4.  Request Schema
@@ -86,6 +83,7 @@ Table of Contents
        4.2.1.  Chain Identification
        4.2.2.  Credential Type Negotiation
        4.2.3.  Payment Splits
+       4.2.4.  Permit2 Deployments
    5.  Credential Schema
      5.1.  Credential Structure
      5.2.  Permit2 Payload (type="permit2")
@@ -101,7 +99,7 @@ Table of Contents
        5.3.3.  Example
      5.4.  Transaction Payload (type="transaction")
      5.5.  Hash Payload (type="hash")
-     5.6.  Gas Sponsorship Model
+     5.6.  Resource Model and Fee Payment
    6.  Verification Procedure
      6.1.  Permit2 Verification
      6.2.  Authorization Verification
@@ -124,52 +122,73 @@ Table of Contents
      10.5.  Permit2-Specific Risks
      10.6.  Fee Payer Risks
      10.7.  Split Payment Risks
-     10.8.  RPC Trust
-   11. IANA Considerations
-     11.1.  Payment Method Registration
-     11.2.  Payment Intent Registration
-   12. References
-     12.1.  Normative References
-     12.2.  Informative References
-   Appendix A.  Full Example: Permit2 Charge on MegaETH
-   Appendix B.  Full Example: Transaction Charge on Sei
-   Appendix C.  Acknowledgements
+     10.8.  Node Trust
+     10.9.  Execution Result of Included Transactions
+   11. Resource Sponsorship (TRON Extension)
+     11.1.  Overview
+     11.2.  The resourceSponsor Field
+     11.3.  Client Behavior
+     11.4.  Server Procedure
+     11.5.  Delegation Bounds and Reclaim
+     11.6.  Account Activation
+     11.7.  Error Handling
+     11.8.  Security Considerations
+   12. IANA Considerations
+     12.1.  Payment Method Registration
+     12.2.  Payment Intent Registration
+   13. References
+     13.1.  Normative References
+     13.2.  Informative References
+   Appendix A.  Full Example: Permit2 Charge on TRON Nile
+   Appendix B.  Full Example: Sponsored Transaction Charge on TRON Nile
+   Appendix C.  Open Issues
+   Appendix D.  Acknowledgements
    Authors' Addresses
 
 1.  Introduction
 
    HTTP Payment Authentication [I-D.httpauth-payment] defines a
    challenge-response mechanism that gates access to resources behind
-   payments.  This document registers the "charge" intent for the "TRON"
-   payment method.
+   payments.  This document registers the "charge" intent for the
+   "tron" payment method.
 
-   The TRON Virtual Machine (TRON) is the execution environment
-   shared by TRON and a growing number of compatible blockchains.
-   These chains share a common smart contract interface (TRC-20
-   [TRC-20]), transaction format (TIP-1559 [TIP-1559]), address encoding
-   (TIP-55 [TIP-55]), and JSON-RPC API — making it possible to define a
-   single payment method that works across all of them.
+   TRON is a public blockchain whose virtual machine (the TVM) is
+   largely compatible with the Ethereum Virtual Machine at the contract
+   level: TRC-20 tokens [TRC-20] expose the same interface as ERC-20
+   tokens, and contracts such as Permit2 [PERMIT2] can be deployed on
+   it.  The network layer differs: TRON uses Base58Check addresses,
+   protobuf-encoded transactions identified by the SHA-256 hash of
+   their raw data, a reference-block mechanism instead of account
+   nonces, and a resource model (Energy and Bandwidth) instead of gas.
 
    This specification inherits the shared request semantics of the
    "charge" intent from [I-D.payment-intent-charge].  It defines only
-   the TRON-specific methodDetails, payload, and verification procedures.
+   the TRON-specific methodDetails, payload, and verification
+   procedures.  It is derived from the EVM charge method
+   [I-D.evm-charge] and keeps that document's structure and section
+   numbering for Sections 1 to 10, so that the two can be compared
+   section by section.
 
 1.1.  Design Rationale
 
-   Prior drafts proposed separate payment methods for individual TRON
-   chains.  However, the control flow, data structures, and verification
-   logic are identical across these chains — the only differences are
-   chain ID and optional RPC extensions.  A unified TRON method avoids
-   fragmenting the registry while still allowing chain-specific
-   optimizations at the implementation level.
+   The "evm" payment method cannot be reused for TRON: its addresses,
+   its transaction format (RLP-encoded EIP-1559 transactions), its
+   JSON-RPC calls and its gas model do not apply.  The payment flows,
+   however, carry over unchanged.  This document therefore keeps the
+   four credential types of [I-D.evm-charge] and their semantics, and
+   replaces every network-specific element with its TRON counterpart.
+
+   The protocol-level behavior (challenge, credential, receipt, errors)
+   is defined by [I-D.httpauth-payment] and is identical for all
+   payment methods.
 
 1.2.  Client-Broadcast Fallback
 
    Some clients (custodial wallets, hardware signers) cannot hand off a
    signed-but-unbroadcast transaction.  For these cases, type="hash"
-   allows the client to broadcast the transaction itself and present the
-   on-chain hash.  This mode provides weaker challenge binding and does
-   not support splits or server-paid fees.  Servers SHOULD prefer
+   allows the client to broadcast the transaction itself and present
+   its transaction ID.  This mode provides weaker challenge binding and
+   does not support splits or server-paid fees.  Servers SHOULD prefer
    type="permit2" or type="transaction" when possible.
 
 1.3.  Credential Types
@@ -177,41 +196,34 @@ Table of Contents
    This specification defines four credential types:
 
    *  *type="permit2" (RECOMMENDED)*: The client signs an off-chain
-      TIP-712 Permit2 authorization.  The server constructs and submits
-      the on-chain transaction.  This is the preferred flow because:
+      TIP-712 [TIP-712] Permit2 authorization.  The server constructs
+      and submits the on-chain transaction.  This is the preferred flow
+      because:
 
-      -  The client never interacts with the chain directly
+      -  The client never interacts with the network directly
 
-      -  The server naturally sponsors gas (fee payer)
+      -  The server pays the network resources (fee payer)
 
       -  Split payments are atomic via batch transfers
 
-      -  No nonce management burden on the client
-
       -  externalId is cryptographically bound via witness data
 
-   *  *type="authorization"*: The client signs an off-chain TIP-3009
-      [TIP-3009] transferWithAuthorization message.  The server submits
-      it to the token contract.  This credential is available for tokens
-      that natively implement TIP-3009 (e.g., USDC, EURC).  Benefits:
-
-      -  No Permit2 approval prerequisite — zero setup
-
-      -  Server naturally sponsors gas
-
-      -  Challenge binding via the on-chain nonce
-
-      -  Simpler signature structure
+   *  *type="authorization"*: The client signs an off-chain
+      transferWithAuthorization message with the semantics of
+      [EIP-3009].  The server submits it to the token contract.  This
+      credential is available only for TRC-20 tokens that implement
+      transferWithAuthorization.  At the time of writing no widely used
+      TRC-20 token on TRON is known to do so (see Appendix C).
 
    *  *type="transaction"*: The client signs a complete TRC-20 transfer
-      transaction.  The server broadcasts it.  This is the compatible
-      fallback for chains where Permit2 is not deployed or clients that
-      prefer direct transaction signing.
+      transaction.  The server broadcasts it.  The client pays the
+      network resources, unless the server sponsors them
+      (Section 11).
 
-   *  *type="hash"*: The client signs and broadcasts a standard TRC-20
-      transfer transaction and presents the confirmed transaction hash
-      for server verification.  This is the fallback for some hardware
-      wallets that cannot hand off a signed-but-unbroadcast transaction.
+   *  *type="hash"*: The client signs and broadcasts a TRC-20 transfer
+      transaction and presents its transaction ID for server
+      verification.  This is the fallback for wallets that cannot hand
+      off a signed-but-unbroadcast transaction.
 
    Servers that support Permit2 SHOULD advertise it as the preferred
    credential type.  Clients SHOULD prefer type="permit2" when
@@ -222,7 +234,7 @@ Table of Contents
    The following diagram illustrates the recommended charge flow using a
    Permit2 credential:
 
-   Client                  Server               TRON Chain
+   Client                  Server               TRON Network
      |                        |                      |
      | (1) GET /resource      |                      |
      |----------------------->|                      |
@@ -238,10 +250,10 @@ Table of Contents
      |     Payment <cred>     |                      |
      |----------------------->|                      |
      |                        | (5) Submit permit-   |
-     |                        |  [Batch]Witness-     |
-     |                        |  TransferFrom()      |
+     |                        |  WitnessTransfer-    |
+     |                        |  From()              |
      |                        |--------------------->|
-     |                        | (6) Receipt          |
+     |                        | (6) Transaction info |
      |                        |<---------------------|
      | (7) 200 OK + Receipt   |                      |
      |<-----------------------|                      |
@@ -252,7 +264,51 @@ Table of Contents
    This document inherits the shared request semantics of the "charge"
    intent from [I-D.payment-intent-charge].  It defines only the TRON-
    specific methodDetails, payload, and verification procedures for the
-   "TRON" payment method.
+   "tron" payment method.  The "session" intent for TRON is out of
+   scope and is specified separately.
+
+1.6.  Differences from the EVM Charge Method
+
+   +=====================+=======================+=====================+
+   | Element             | evm [I-D.evm-charge]  | tron (this doc)     |
+   +=====================+=======================+=====================+
+   | Method identifier   | "evm"                 | "tron"              |
+   +---------------------+-----------------------+---------------------+
+   | Address encoding    | 0x-prefixed 20-byte   | Base58Check, 0x41   |
+   |                     | hex (EIP-55)          | version byte        |
+   +---------------------+-----------------------+---------------------+
+   | Chain identifier    | EIP-155 chain ID      | TRON chain ID       |
+   |                     |                       | (Section 4.2.1)     |
+   +---------------------+-----------------------+---------------------+
+   | Signed transaction  | RLP, EIP-1559         | protobuf            |
+   |                     |                       | Transaction, hex    |
+   +---------------------+-----------------------+---------------------+
+   | Transaction ID      | Keccak-256 of the     | SHA-256 of raw_data |
+   |                     | signed transaction    |                     |
+   +---------------------+-----------------------+---------------------+
+   | Replay and chain    | account nonce,        | reference block     |
+   | binding             | chain ID              | (TAPOS), expiration |
+   +---------------------+-----------------------+---------------------+
+   | Network fees        | gas                   | Energy, Bandwidth,  |
+   |                     |                       | fee_limit           |
+   +---------------------+-----------------------+---------------------+
+   | Success criterion   | receipt status 0x1    | included and        |
+   |                     |                       | execution result    |
+   |                     |                       | SUCCESS             |
+   +---------------------+-----------------------+---------------------+
+   | Permit2 address     | canonical, with       | per network, no     |
+   |                     | default               | default             |
+   +---------------------+-----------------------+---------------------+
+   | Permit2 spender     | not carried           | methodDetails.      |
+   |                     |                       | spender             |
+   +---------------------+-----------------------+---------------------+
+   | Typed-data signing  | EIP-712               | TIP-712             |
+   +---------------------+-----------------------+---------------------+
+   | Resource            | n/a                   | optional            |
+   | sponsorship         |                       | (Section 11)        |
+   +---------------------+-----------------------+---------------------+
+
+                                  Table 1
 
 2.  Requirements Language
 
@@ -264,24 +320,62 @@ Table of Contents
 
 3.  Terminology
 
-   TRC-20  The standard token interface on TRON-compatible chains
-      [TRC-20].  Tokens expose transfer(address,uint256) and emit
+   TRC-20  The fungible token standard on TRON [TRC-20], equivalent to
+      ERC-20.  Tokens expose transfer(address,uint256) and emit
       Transfer events on successful transfers.
 
-   Permit2  Uniswap's universal token approval contract [PERMIT2],
-      deployed at the canonical address
-      0x000000000022D473030F116dDEE9F6B43aC78BA3 on all supported
-      chains.  Enables off-chain signed approvals for any TRC-20 token
-      via PermitWitnessTransferFrom and PermitBatchWitnessTransferFrom.
+   TRX  The native asset of the TRON network.  Out of scope as a
+      payment currency in this document.
 
-   TIP-712  A standard for typed structured data hashing and signing
-      [TIP-712], used by Permit2 to produce human-readable, replay-
-      protected authorization signatures.
+   Address  A TRON account or contract address.  On the wire it is the
+      Base58Check encoding of a 21-byte value: the version byte 0x41
+      followed by the 20-byte address (34 characters, starting with
+      "T").  Inside ABI-encoded calldata, event logs and TIP-712 typed
+      data the 20-byte form is used.
+
+   Transaction ID  The SHA-256 hash of a transaction's raw_data, written
+      as 64 hexadecimal characters.  It identifies the transaction on
+      the network.
+
+   Reference Block (TAPOS)  Every TRON transaction names a recent block
+      (ref_block_bytes, ref_block_hash) and an expiration time.  A node
+      accepts the transaction only if the reference block is on its
+      chain and the expiration has not passed.  This binds a
+      transaction to one network; TRON transactions carry no chain ID
+      and no account nonce.
+
+   Energy and Bandwidth  The network resources consumed by smart
+      contract execution (Energy) and by transaction size (Bandwidth).
+      An account obtains them by staking TRX, by receiving a delegation
+      from another account, or pays for them by burning TRX up to the
+      transaction's fee_limit.
+
+   Resource Delegation  The transfer of the right to use Energy or
+      Bandwidth, backed by staked TRX, from one account to another
+      [TIP-467].  The delegating account can reclaim it.
+
+   Account Activation  A TRON address exists as an account on the
+      network only after it has been activated, for example by
+      receiving TRX or by an AccountCreateContract transaction.  An
+      address that has only received TRC-20 tokens may not be
+      activated.
+
+   Solidified Block  A block confirmed by more than two thirds of the
+      network's block producers, after which it cannot be reverted.
+
+   Permit2  Uniswap's token approval contract [PERMIT2].  Enables
+      off-chain signed approvals for any TRC-20 token via the
+      permitWitnessTransferFrom function (single and batch overloads).
+      TRON has no canonical Permit2 address; deployments are listed per
+      network (Section 4.2.4).
+
+   TIP-712  TRON's standard for typed structured data hashing and
+      signing [TIP-712], equivalent to EIP-712 [EIP-712] with TRON
+      addresses encoded in their 20-byte form.
 
    Base Units  The smallest transferable unit of a token, determined by
-      the token's decimal precision.  For example, USDC (6 decimals)
-      uses 1,000,000 base units per 1 USDC; USDm (18 decimals) uses
-      10^18 base units per 1 USDm.
+      the token's decimal precision.  For example, USDT on TRON (6
+      decimals) uses 1,000,000 base units per 1 USDT.
 
 4.  Request Schema
 
@@ -296,63 +390,109 @@ Table of Contents
      | Field       | Type   | Required | Description                 |
      +=============+========+==========+=============================+
      | amount      | string | REQUIRED | Amount in base units        |
-     |             |        |          | (stringified integer)       |
+     |             |        |          | (stringified non-negative   |
+     |             |        |          | integer)                    |
      +-------------+--------+----------+-----------------------------+
      | currency    | string | REQUIRED | TRC-20 token contract       |
      |             |        |          | address                     |
      +-------------+--------+----------+-----------------------------+
-     | recipient   | string | REQUIRED | Recipient address, TIP-55   |
-     |             |        |          | encoded [TIP-55]            |
+     | recipient   | string | REQUIRED | Recipient address           |
      +-------------+--------+----------+-----------------------------+
      | description | string | OPTIONAL | Human-readable payment      |
      |             |        |          | description                 |
      +-------------+--------+----------+-----------------------------+
-     | externalId  | string | OPTIONAL | MTRChant's reference (order |
+     | externalId  | string | OPTIONAL | Merchant's reference (order |
      |             |        |          | ID, invoice number, etc.)   |
      +-------------+--------+----------+-----------------------------+
 
-                                  Table 1
+                                  Table 2
 
    Challenge expiry is conveyed by the expires auth-param in WWW-
    Authenticate per [I-D.httpauth-payment].
 
-   Addresses in currency and recipient MUST be 0x-prefixed, 20-byte hex
-   strings.  Implementations SHOULD use TIP-55 mixed-case encoding but
-   MUST compare addresses by decoded 20-byte value, not string form.
+   amount MUST contain only decimal digits, with no sign, decimal point
+   or exponent.  Implementations MUST use exact integer arithmetic for
+   amounts.
+
+   Addresses in currency, recipient and every other address field of
+   this document MUST be Base58Check-encoded TRON addresses (Section 3).
+   Implementations MUST validate the checksum and the 0x41 version byte
+   and MUST compare addresses by their decoded 20-byte value, not by
+   string form.
+
+   currency MUST be the address of a TRC-20 contract.  Native TRX and
+   TRC-10 assets cannot be charged with this method.
 
 4.2.  Method Details
 
-    +=================+========+==========+===========================+
-    | Field           | Type   | Required | Description               |
-    +=================+========+==========+===========================+
-    | chainId         | number | REQUIRED | TIP-155 chain ID          |
-    +-----------------+--------+----------+---------------------------+
-    | permit2Address  | string | REQUIRED | Permit2 contract address  |
-    |                 |        |          | (default: canonical       |
-    |                 |        |          | address)                  |
-    +-----------------+--------+----------+---------------------------+
-    | credentialTypes | array  | OPTIONAL | Ordered list of accepted  |
-    |                 |        |          | credential types          |
-    +-----------------+--------+----------+---------------------------+
-    | decimals        | number | OPTIONAL | Token decimal precision   |
-    |                 |        |          | (e.g., 6 for USDC, 18 for |
-    |                 |        |          | USDm).  Aids client-side  |
-    |                 |        |          | display verification.     |
-    +-----------------+--------+----------+---------------------------+
-    | splits          | array  | OPTIONAL | Additional payment splits |
-    |                 |        |          | (max 10)                  |
-    +-----------------+--------+----------+---------------------------+
+    +=================+=========+==========+==========================+
+    | Field           | Type    | Required | Description              |
+    +=================+=========+==========+==========================+
+    | chainId         | number  | REQUIRED | TRON chain ID (Section   |
+    |                 |         |          | 4.2.1)                   |
+    +-----------------+---------+----------+--------------------------+
+    | permit2Address  | string  | see text | Permit2 contract address |
+    |                 |         |          | on this network (no      |
+    |                 |         |          | default; Section 4.2.4)  |
+    +-----------------+---------+----------+--------------------------+
+    | spender         | string  | see text | Address that submits     |
+    |                 |         |          | Permit2 transfers for    |
+    |                 |         |          | the server (Section 5.2) |
+    +-----------------+---------+----------+--------------------------+
+    | credentialTypes | array   | OPTIONAL | Ordered list of accepted |
+    |                 |         |          | credential types         |
+    +-----------------+---------+----------+--------------------------+
+    | decimals        | number  | OPTIONAL | Token decimal precision  |
+    |                 |         |          | (e.g., 6 for USDT).      |
+    |                 |         |          | Display aid only.        |
+    +-----------------+---------+----------+--------------------------+
+    | splits          | array   | OPTIONAL | Additional payment       |
+    |                 |         |          | splits (max 10)          |
+    +-----------------+---------+----------+--------------------------+
+    | resourceSponsor | boolean | OPTIONAL | Server sponsors the      |
+    |                 |         |          | resources of a           |
+    |                 |         |          | transaction credential   |
+    |                 |         |          | (Section 11)             |
+    +-----------------+---------+----------+--------------------------+
 
-                                  Table 2
+                                  Table 3
+
+   permit2Address and spender are REQUIRED when "permit2" is an
+   accepted credential type, which includes every challenge with
+   splits.  Otherwise they MAY be omitted, so that a network without a
+   Permit2 deployment can still use the other credential types.
+   Permit2 signatures commit to the address that will call the Permit2
+   contract (Section 5.2.1); the client cannot sign without spender.
+
+   decimals, when present, MUST be used only for display.  It never
+   changes the base-unit amount that is signed or verified.
+
+   Clients MUST ignore unknown methodDetails fields, per
+   [I-D.httpauth-payment].
 
 4.2.1.  Chain Identification
 
-   The chainId field is REQUIRED and identifies the target blockchain
-   using its TIP-155 chain ID.  Clients MUST reject challenges whose
-   chainId does not match a chain they support.
+   The chainId field is REQUIRED and identifies the TRON network.  The
+   TRON chain ID is the value returned by the TVM's chainid opcode and
+   used in TIP-712 domains; it equals the last four bytes of the
+   network's genesis block ID, read as an unsigned integer.
 
-   A registry of TRON chain IDs is maintained at https://chainlist.org.
-   This specification is not limited to any particular set of chains.
+          +==================+============+============+
+          | Network          | chainId    | Hex        |
+          +==================+============+============+
+          | TRON Mainnet     | 728126428  | 0x2b6653dc |
+          +------------------+------------+------------+
+          | Nile Testnet     | 3448148188 | 0xcd8690dc |
+          +------------------+------------+------------+
+          | Shasta Testnet   | 2494104990 | 0x94a9059e |
+          +------------------+------------+------------+
+
+                                  Table 4
+
+   Clients MUST reject, without signing or broadcasting anything,
+   challenges whose chainId does not match a network they support.
+   Servers MUST use a node of the network named by chainId, and SHOULD
+   verify at startup that the node reports that chain.
 
 4.2.2.  Credential Type Negotiation
 
@@ -364,9 +504,13 @@ Table of Contents
    If omitted, servers MUST accept "transaction" and SHOULD accept
    "hash".  Servers that support Permit2 SHOULD include "permit2" as the
    first entry to indicate preference.  Servers MUST only include
-   "authorization" when the currency token is known to implement TIP-
-   3009.  Clients SHOULD use the first type in the list that they
-   support.
+   "authorization" when the currency token is known to implement
+   transferWithAuthorization.  Clients SHOULD use the first type in the
+   list that they support.  Servers MUST reject a credential whose type
+   is not accepted for the challenge.
+
+   Resource sponsorship (Section 11) is not a credential type; it
+   modifies type="transaction".
 
 4.2.3.  Payment Splits
 
@@ -378,15 +522,15 @@ Table of Contents
    transfer mechanism ensures all transfers (primary + splits) execute
    atomically in a single on-chain transaction.  Servers MUST reject
    split requests fulfilled with type="transaction",
-   type="authorization", or type="hash" credentials.
+   type="authorization", or type="hash" credentials.  Servers MUST NOT
+   issue splits on a network without a Permit2 deployment.
 
    Each entry in the splits array is a JSON object:
 
    +===========+========+==========+===================================+
    | Field     | Type   | Required | Description                       |
    +===========+========+==========+===================================+
-   | recipient | string | REQUIRED | TIP-55 address of                 |
-   |           |        |          | split recipient                   |
+   | recipient | string | REQUIRED | Address of split recipient        |
    +-----------+--------+----------+-----------------------------------+
    | amount    | string | REQUIRED | Amount in base units              |
    |           |        |          | for this recipient                |
@@ -395,7 +539,7 @@ Table of Contents
    |           |        |          | (max 256 chars)                   |
    +-----------+--------+----------+-----------------------------------+
 
-                                  Table 3
+                                  Table 5
 
    The top-level amount represents the total the client pays.  The
    primary recipient receives the remainder: amount minus the sum of all
@@ -404,7 +548,8 @@ Table of Contents
    Constraints:
 
    *  The sum of splits[].amount MUST be strictly less than amount.
-      Clients MUST reject any request that violates this constraint.
+      Servers MUST NOT issue, and clients MUST reject, any request that
+      violates this constraint.
 
    *  If present, splits MUST contain at least 1 entry.  Servers SHOULD
       limit splits to 10 entries.
@@ -423,15 +568,17 @@ Table of Contents
 
    {
      "amount": "1050000",
-     "currency": "0xe15fc38f6d8c56af07bbcbe3baf5708a2bf42392",
-     "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
+     "currency": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+     "recipient": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm",
      "description": "Marketplace purchase",
      "methodDetails": {
-       "chainId": 1329,
+       "chainId": 728126428,
+       "permit2Address": "TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9",
+       "spender": "TVrKLzFi2AVno1wxY3buk5NuTwwtPSGeXf",
        "credentialTypes": ["permit2"],
        "splits": [
          {
-           "recipient": "0x8Ba1f109551bD432803012645Ac136ddd64DBA72",
+           "recipient": "TDZ7envevLByCdbKUrcAE7wPzV9E4jfVSj",
            "amount": "50000",
            "memo": "platform fee"
          }
@@ -439,9 +586,36 @@ Table of Contents
      }
    }
 
-   This requests a total payment of 1.05 USDC.  The platform receives
-   0.05 USDC and the primary recipient receives 1.00 USDC.  Both
-   transfers execute atomically via Permit2 batch.
+   This requests a total payment of 1.05 USDT on TRON mainnet.  The
+   platform receives 0.05 USDT and the primary recipient receives 1.00
+   USDT.  Both transfers execute atomically via Permit2 batch.
+
+4.2.4.  Permit2 Deployments
+
+   TRON has no canonical, cross-network Permit2 address.  permit2Address
+   therefore has no default value and MUST be present whenever
+   "permit2" is offered (Section 4.2).  Clients SHOULD sign
+   a Permit2 authorization only when permit2Address equals a deployment
+   they know for the challenge's chainId, and implementations SHOULD
+   ship such a list.  Deployments known at the time of writing:
+
+     +==================+====================================+
+     | Network          | Permit2 address                    |
+     +==================+====================================+
+     | TRON Mainnet     | TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9 |
+     +------------------+------------------------------------+
+     | Nile Testnet     | TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs |
+     +------------------+------------------------------------+
+     | Shasta Testnet   | none known                         |
+     +------------------+------------------------------------+
+
+                                  Table 6
+
+   Both listed deployments expose the standard Permit2 interface,
+   including both overloads of permitWitnessTransferFrom, and their
+   DOMAIN_SEPARATOR() equals the standard Permit2 TIP-712 domain (name
+   "Permit2", the network's chainId, and the contract's 20-byte
+   address).
 
 5.  Credential Schema
 
@@ -456,28 +630,40 @@ Table of Contents
          | challenge | object | REQUIRED | Echo of the challenge |
          |           |        |          | from the server       |
          +-----------+--------+----------+-----------------------+
-         | payload   | object | REQUIRED | TRON-specific payload  |
+         | payload   | object | REQUIRED | TRON-specific payload |
          +-----------+--------+----------+-----------------------+
-         | source    | string | OPTIONAL | Payer identifier as a |
+         | source    | string | see text | Payer identifier as a |
          |           |        |          | DID                   |
          +-----------+--------+----------+-----------------------+
 
-                                  Table 4
+                                  Table 7
 
-   The source field, if present, SHOULD use the did:pkh method with the
-   chain ID from the challenge and the payer's address (e.g.,
-   did:pkh:eip155:4326:0x1234...).
+   source is REQUIRED for type="permit2", where it identifies the
+   token owner passed to the Permit2 contract, and OPTIONAL otherwise.
+   When present it SHOULD use the did:pkh method [DID-PKH] with the
+   "tron" namespace, the hexadecimal chain ID and the payer's
+   Base58Check address, for example:
+
+   did:pkh:tron:0x2b6653dc:TBrgfKc9vXVE3ctTvXiZpXYAT1uWAnU2KN
+
+   For server-submitted types the address recovered from the signature
+   MUST equal the address in source.
 
 5.2.  Permit2 Payload (type="permit2")
 
    The RECOMMENDED credential type.  The client signs an off-chain
    TIP-712 Permit2 authorization message.  The server constructs and
-   submits the on-chain transaction, paying gas from its own balance.
-   The client never interacts with the chain directly.
+   submits the on-chain transaction from the spender address, paying
+   the network resources.  The client never interacts with the network
+   directly.
 
-   This type requires that the Permit2 contract is deployed on the
-   target chain and that the client has an active TRC-20 approval to the
-   Permit2 contract (a one-time operation per token per chain).
+   This type requires a Permit2 deployment on the network
+   (Section 4.2.4) and an active TRC-20 approval from the client to the
+   Permit2 contract that covers the total amount (a one-time operation
+   per token per network).  Before signing, clients MUST check their
+   allowance and token balance; if either is insufficient they MUST NOT
+   sign a permit2 credential and SHOULD use another accepted credential
+   type or first send the approval themselves.
 
     +=================+========+==========+===========================+
     | Field           | Type   | Required | Description               |
@@ -491,11 +677,12 @@ Table of Contents
     | witness         | object | REQUIRED | Challenge binding witness |
     |                 |        |          | data                      |
     +-----------------+--------+----------+---------------------------+
-    | signature       | string | REQUIRED | TIP-712 signature (0x-    |
-    |                 |        |          | prefixed)                 |
+    | signature       | string | REQUIRED | TIP-712 signature, 65     |
+    |                 |        |          | bytes (r, s, v), 0x-      |
+    |                 |        |          | prefixed hex              |
     +-----------------+--------+----------+---------------------------+
 
-                                  Table 5
+                                  Table 8
 
 5.2.1.  Permit Object
 
@@ -512,7 +699,7 @@ Table of Contents
     | deadline  | string | Unix timestamp (stringified integer)       |
     +-----------+--------+--------------------------------------------+
 
-                                  Table 6
+                                  Table 9
 
    The permitted array MUST always be an array, even for single
    transfers (length 1).  Each entry specifies:
@@ -525,7 +712,25 @@ Table of Contents
      | amount | string | Maximum transfer amount in base units      |
      +--------+--------+--------------------------------------------+
 
-                                 Table 7
+                                 Table 10
+
+   The signed TIP-712 message is the Permit2 witness transfer type.  For
+   a single transfer (permitted length 1) the primary type is
+   PermitWitnessTransferFrom with permitted as one TokenPermissions;
+   for a batch (permitted length > 1) it is
+   PermitBatchWitnessTransferFrom with permitted as TokenPermissions[].
+   In both cases the spender field of the message is
+   methodDetails.spender, and the TIP-712 domain is:
+
+   {
+     "name": "Permit2",
+     "chainId": <methodDetails.chainId>,
+     "verifyingContract": <20-byte form of methodDetails.permit2Address>
+   }
+
+   Permit2 nonces are unordered: the client chooses any nonce it has
+   not used with this Permit2 deployment.  deadline SHOULD NOT be later
+   than the challenge expires.
 
 5.2.2.  Transfer Details
 
@@ -540,10 +745,14 @@ Table of Contents
     | requestedAmount | string | Exact transfer amount in base units |
     +-----------------+--------+-------------------------------------+
 
-                                 Table 8
+                                 Table 11
 
    The first entry corresponds to the primary recipient.  Subsequent
    entries (if any) correspond to split recipients in array order.
+   Recipients and amounts in transferDetails are not covered by the
+   Permit2 signature itself; they are bound to the challenge through
+   the witness (Section 5.2.3) and verified by the server
+   (Section 6.1).
 
 5.2.3.  Witness Data (Challenge Binding)
 
@@ -573,31 +782,43 @@ Table of Contents
    The signature cannot be reused against a different challenge, even if
    the payment parameters are identical.
 
-   The witness type string for TIP-712 is: "PaymentWitness
-   witness)PaymentWitness(bytes32 challengeHash, string
-   externalId)TokenPermissions(address token,uint256 amount)"
+   The witness type string passed to the Permit2 contract is (one line,
+   no whitespace other than the single spaces shown):
 
-   This specification defines that witness schema directly for challenge
-   binding.  Implementations MUST use the exact type string above when
-   constructing the TIP-712 typed data.
+   PaymentWitness witness)PaymentWitness(bytes32 challengeHash,string
+   externalId)TokenPermissions(address token,uint256 amount)
 
-   This binding applies to both single and batch transfers — the same
-   witness parameter is used by permitWitnessTransferFrom() and
-   permitBatchWitnessTransferFrom().
+   The witness value passed to the contract is the TIP-712 struct hash:
+
+   witness = keccak256(abi.encode(
+       keccak256("PaymentWitness(bytes32 challengeHash,string
+                  externalId)"),
+       challengeHash,
+       keccak256(bytes(externalId))
+   ))
+
+   Implementations MUST use exactly this type string when constructing
+   the TIP-712 typed data.  The same witness is used by the single and
+   the batch overload of permitWitnessTransferFrom().
 
 5.2.4.  Server Behavior
 
    For single transfers (no splits, permitted length 1), the server
-   calls permitWitnessTransferFrom().
+   calls the single overload of permitWitnessTransferFrom() on the
+   Permit2 contract.
 
    For batch transfers (with splits, permitted length > 1), the server
-   calls permitBatchWitnessTransferFrom().  This executes all transfers
-   in a single on-chain transaction — if any transfer fails, the entire
+   calls the batch overload of permitWitnessTransferFrom(), which takes
+   arrays of TokenPermissions and transfer details.  (The batch call is
+   an overload of the same function name; PermitBatchWitnessTransferFrom
+   is only the name of its signed type.)  This executes all transfers in
+   a single on-chain transaction; if any transfer fails, the entire
    batch reverts.
 
-   The server pays gas from its own balance in both cases.  This is the
-   natural fee sponsorship model for Permit2: the client signs only the
-   off-chain authorization and the server handles all chain interaction.
+   The server submits from the spender address and pays the Energy and
+   Bandwidth in both cases.  This is the natural fee sponsorship model
+   for Permit2: the client signs only the off-chain authorization and
+   the server handles all network interaction.
 
 5.2.5.  Example: Single Transfer
 
@@ -605,7 +826,7 @@ Table of Contents
      "challenge": {
        "id": "aB3cDeF4gHiJkLmN",
        "realm": "api.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
        "request": "eyJ...",
        "expires": "2026-04-01T12:05:00Z"
@@ -615,25 +836,26 @@ Table of Contents
        "permit": {
          "permitted": [
            {
-             "token": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
-             "amount": "1000000000000000000"
+             "token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+             "amount": "1000000"
            }
          ],
          "nonce": "1",
-         "deadline": "1743523500"
+         "deadline": "1775045100"
        },
        "transferDetails": [
          {
-           "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
-           "requestedAmount": "1000000000000000000"
+           "to": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm",
+           "requestedAmount": "1000000"
          }
        ],
        "witness": {
-         "challengeHash": "0x8a3b...f1c2"
+         "challengeHash": "0x899e3a8f...6f281d",
+         "externalId": ""
        },
        "signature": "0x1b2c3d4e5f..."
      },
-     "source": "did:pkh:eip155:4326:0x1234...5678"
+     "source": "did:pkh:tron:0x2b6653dc:TBrgfKc9...uWAnU2KN"
    }
 
 5.2.6.  Example: Batch Transfer with Splits
@@ -642,7 +864,7 @@ Table of Contents
      "challenge": {
        "id": "sP1itBatchEx4mple",
        "realm": "marketplace.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
        "request": "eyJ...",
        "expires": "2026-04-01T12:05:00Z"
@@ -652,49 +874,51 @@ Table of Contents
        "permit": {
          "permitted": [
            {
-             "token": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
-             "amount": "1000000000000000000"
+             "token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+             "amount": "1000000"
            },
            {
-             "token": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
-             "amount": "50000000000000000"
+             "token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+             "amount": "50000"
            }
          ],
-         "nonce": "1",
-         "deadline": "1743523500"
+         "nonce": "2",
+         "deadline": "1775045100"
        },
        "transferDetails": [
          {
-           "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
-           "requestedAmount": "1000000000000000000"
+           "to": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm",
+           "requestedAmount": "1000000"
          },
          {
-           "to": "0x8Ba1f109551bD432803012645Ac136ddd64DBA72",
-           "requestedAmount": "50000000000000000"
+           "to": "TDZ7envevLByCdbKUrcAE7wPzV9E4jfVSj",
+           "requestedAmount": "50000"
          }
        ],
        "witness": {
-         "challengeHash": "0x7d4e...a3b9"
+         "challengeHash": "0x00474a5d...088f12",
+         "externalId": ""
        },
        "signature": "0x9a8b7c6d5e..."
      },
-     "source": "did:pkh:eip155:4326:0x1234...5678"
+     "source": "did:pkh:tron:0x2b6653dc:TBrgfKc9...uWAnU2KN"
    }
 
-   This transfers 1.0 USDm to the primary recipient and 0.05 USDm to the
-   platform — atomically, in a single transaction.  The client signs one
-   TIP-712 message covering both transfers.
+   This transfers 1.00 USDT to the primary recipient and 0.05 USDT to
+   the platform, atomically, in a single transaction.  The client signs
+   one TIP-712 message covering both transfers.
 
 5.3.  Authorization Payload (type="authorization")
 
-   Opt-in credential type for tokens that implement TIP-3009 [TIP-3009]
-   (e.g., USDC, EURC).  The client signs an off-chain
-   transferWithAuthorization message.  The server submits it directly to
-   the token contract, paying gas from its own balance.  The client
-   never interacts with the chain directly.
+   Opt-in credential type for TRC-20 tokens that implement
+   transferWithAuthorization with the semantics of [EIP-3009].  The
+   client signs an off-chain transferWithAuthorization message per
+   TIP-712.  The server submits it directly to the token contract,
+   paying the network resources.  The client never interacts with the
+   network directly.
 
-   Unlike type="permit2", this type requires no prior token approval —
-   TIP-3009 authorization is built into the token contract itself.
+   Unlike type="permit2", this type requires no prior token approval;
+   the authorization mechanism is built into the token contract itself.
 
     +=============+========+==========+===============================+
     | Field       | Type   | Required | Description                   |
@@ -709,29 +933,28 @@ Table of Contents
     | value       | string | REQUIRED | Transfer amount in base units |
     |             |        |          | (MUST match challenge amount) |
     +-------------+--------+----------+-------------------------------+
-    | validAfter  | string | REQUIRED | Unix timestamp —              |
-    |             |        |          | authorization not valid       |
-    |             |        |          | before this time (stringified |
-    |             |        |          | integer, typically "0")       |
+    | validAfter  | string | REQUIRED | Unix timestamp; authorization |
+    |             |        |          | not valid before this time    |
+    |             |        |          | (stringified integer,         |
+    |             |        |          | typically "0")                |
     +-------------+--------+----------+-------------------------------+
-    | validBefore | string | REQUIRED | Unix timestamp —              |
-    |             |        |          | authorization not valid after |
-    |             |        |          | this time (stringified        |
-    |             |        |          | integer)                      |
+    | validBefore | string | REQUIRED | Unix timestamp; authorization |
+    |             |        |          | not valid after this time     |
+    |             |        |          | (stringified integer)         |
     +-------------+--------+----------+-------------------------------+
-    | nonce       | string | REQUIRED | bytes32 nonce — MUST be set   |
-    |             |        |          | to challengeHash (see below)  |
+    | nonce       | string | REQUIRED | bytes32 nonce; MUST be set to |
+    |             |        |          | challengeHash (see below)     |
     +-------------+--------+----------+-------------------------------+
-    | signature   | string | REQUIRED | TIP-712 signature (0x-        |
-    |             |        |          | prefixed)                     |
+    | signature   | string | REQUIRED | TIP-712 signature, 65 bytes,  |
+    |             |        |          | 0x-prefixed hex               |
     +-------------+--------+----------+-------------------------------+
 
-                                  Table 9
+                                 Table 12
 
 5.3.1.  Challenge Binding
 
-   The TIP-3009 nonce field is a random bytes32 value chosen by the
-   caller.  This specification requires the nonce to be set to the
+   The [EIP-3009] nonce field is a bytes32 value chosen by the caller.
+   This specification requires the nonce to be set to the
    challengeHash:
 
    nonce = keccak256(abi.encodePacked(
@@ -741,7 +964,7 @@ Table of Contents
 
    This provides cryptographic challenge binding equivalent to the
    Permit2 witness mechanism.  The token contract enforces nonce
-   uniqueness on-chain — a nonce that has been consumed cannot be
+   uniqueness on-chain: a nonce that has been consumed cannot be
    reused, providing replay protection at the contract level.
 
 5.3.2.  Constraints
@@ -751,7 +974,8 @@ Table of Contents
       splits.
 
    *  Servers MUST NOT advertise "authorization" in credentialTypes
-      unless the currency token is known to implement TIP-3009.
+      unless the currency token is known to implement
+      transferWithAuthorization.
 
    *  validBefore SHOULD correspond to the challenge expires timestamp.
 
@@ -765,51 +989,57 @@ Table of Contents
      "challenge": {
        "id": "aB3cDeF4gHiJkLmN",
        "realm": "api.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
        "request": "eyJ...",
        "expires": "2026-04-01T12:05:00Z"
      },
      "payload": {
        "type": "authorization",
-       "from": "0x1234567890abcdef1234567890abcdef12345678",
-       "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
+       "from": "TBrgfKc9vXVE3ctTvXiZpXYAT1uWAnU2KN",
+       "to": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm",
        "value": "1000000",
        "validAfter": "0",
-       "validBefore": "1743523500",
-       "nonce": "0x8a3b...f1c2",
+       "validBefore": "1775045100",
+       "nonce": "0x899e3a8f...6f281d",
        "signature": "0x..."
      },
-     "source": "did:pkh:eip155:4326:0x1234567890abcdef1234567890abcdef12345678"
+     "source": "did:pkh:tron:0x2b6653dc:TBrgfKc9...uWAnU2KN"
    }
 
 5.4.  Transaction Payload (type="transaction")
 
-   The compatible fallback.  The client signs a complete TRC-20 transfer
-   transaction targeting the currency contract.  The server broadcasts
-   the transaction to the chain.  The client pays gas.
-
-   This type is intended for chains where Permit2 is not deployed or
-   clients that prefer direct transaction signing.
+   The client signs a complete TRC-20 transfer transaction targeting the
+   currency contract.  The server broadcasts the transaction to the
+   network.  The client pays the network resources, unless the
+   challenge offers resource sponsorship (Section 11).
 
       +===========+========+==========+============================+
       | Field     | Type   | Required | Description                |
       +===========+========+==========+============================+
       | type      | string | REQUIRED | "transaction"              |
       +-----------+--------+----------+----------------------------+
-      | signature | string | REQUIRED | Hex-encoded RLP-serialized |
-      |           |        |          | signed transaction         |
+      | signature | string | REQUIRED | Hex-encoded, protobuf-     |
+      |           |        |          | serialized signed TRON     |
+      |           |        |          | Transaction                |
       +-----------+--------+----------+----------------------------+
 
-                                 Table 10
+                                 Table 13
 
-   The signature field contains an TIP-1559 (type 2) transaction, RLP-
-   encoded and hex-prefixed with 0x.  The transaction MUST call
-   transfer(address,uint256) on the TRC-20 token specified in the
-   challenge.
+   The signature field contains a TRON Transaction message (raw_data
+   and signature) serialized as protobuf and encoded as hexadecimal,
+   in the form accepted by a node's broadcasthex interface.  The
+   transaction MUST contain exactly one contract of type
+   TriggerSmartContract that calls transfer(address,uint256) on the
+   TRC-20 token specified in the challenge, with the challenge
+   recipient and amount, a call_value of zero and no TRC-10 value.
 
-   The client MUST sign a fully valid transaction including gas
-   parameters and pay gas from their own balance.
+   The client MUST sign a fully valid transaction: the reference block
+   taken from the network named by chainId, an expiration in the
+   future and not later than the challenge expires, and a fee_limit
+   that covers the transfer.  Without resource sponsorship the payer
+   account MUST hold the Energy and Bandwidth, or the TRX to burn, for
+   the transfer.  The client MUST NOT broadcast the transaction itself.
 
    Splits are NOT supported with type="transaction".  Servers MUST
    reject type="transaction" credentials when the challenge includes
@@ -821,42 +1051,48 @@ Table of Contents
      "challenge": {
        "id": "kM9xPqWvT2nJrHsY4aDfEb",
        "realm": "api.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
        "request": "eyJ...",
        "expires": "2026-04-01T12:05:00Z"
      },
      "payload": {
-       "signature": "0x02f8...signed transaction bytes...",
+       "signature": "0a8f010a02...signed transaction bytes...",
        "type": "transaction"
      },
-     "source": "did:pkh:eip155:1329:0x1234567890abcdef1234567890abcdef12345678"
+     "source": "did:pkh:tron:0x2b6653dc:TBrgfKc9...uWAnU2KN"
    }
 
 5.5.  Hash Payload (type="hash")
 
    Optional fallback for clients that broadcast transactions themselves
    (e.g., custodial wallets, hardware signers).  The client broadcasts a
-   standard TRC-20 transfer transaction to the chain and presents the
-   confirmed transaction hash.
+   TRC-20 transfer transaction to the network, pays its resources, and
+   presents the transaction ID once the transaction is included.
 
           +=======+========+==========+=========================+
           | Field | Type   | Required | Description             |
           +=======+========+==========+=========================+
           | type  | string | REQUIRED | "hash"                  |
           +-------+--------+----------+-------------------------+
-          | hash  | string | REQUIRED | Transaction hash (0x-   |
-          |       |        |          | prefixed, 32 bytes hex) |
+          | hash  | string | REQUIRED | Transaction ID (32      |
+          |       |        |          | bytes, 64 hex           |
+          |       |        |          | characters)             |
           +-------+--------+----------+-------------------------+
 
-                                  Table 11
+                                 Table 14
+
+   TRON tooling usually shows transaction IDs without a 0x prefix.
+   Servers MUST accept the ID with or without the prefix and in either
+   letter case, and MUST normalize it (lowercase, no prefix) before
+   any comparison or replay check.
 
    Constraints:
 
    *  Splits are NOT supported.  Servers MUST reject type="hash"
       credentials when the challenge includes splits.
 
-   *  The client pays gas.
+   *  The client pays the network resources.
 
    *  The server cannot modify or retry the transaction.
 
@@ -868,49 +1104,66 @@ Table of Contents
      "challenge": {
        "id": "kM9xPqWvT2nJrHsY4aDfEb",
        "realm": "api.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
        "request": "eyJ...",
        "expires": "2026-04-01T12:05:00Z"
      },
      "payload": {
-       "hash": "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+       "hash": "1a2b3c4d5e6f7890...abcdef1234567890",
        "type": "hash"
      },
-     "source": "did:pkh:eip155:4326:0x1234567890abcdef1234567890abcdef12345678"
+     "source": "did:pkh:tron:0x2b6653dc:TBrgfKc9...uWAnU2KN"
    }
 
-5.6.  Gas Sponsorship Model
+5.6.  Resource Model and Fee Payment
 
-   Gas sponsorship is structurally determined by the credential type —
-   no explicit field is needed:
+   TRON has no gas price.  A transaction consumes Bandwidth (for its
+   size) and, when it executes a contract, Energy.  The sending account
+   pays with Energy and Bandwidth it holds through staking or
+   delegation, and burns TRX for any shortfall, up to the
+   transaction's fee_limit.  A transaction that runs out of Energy
+   within its fee_limit fails but is still recorded on-chain and still
+   charged.
+
+   Who pays is determined by the credential type and, for
+   type="transaction", by resource sponsorship:
 
    +=================+==============+=================================+
-   | Credential Type | Who Pays Gas | Mechanism                       |
+   | Credential Type | Who Pays     | Mechanism                       |
    +=================+==============+=================================+
    | permit2         | Server       | Client signs off-chain; server  |
-   |                 |              | constructs and submits tx       |
+   |                 |              | submits from spender            |
    +-----------------+--------------+---------------------------------+
    | authorization   | Server       | Client signs off-chain; server  |
    |                 |              | submits to token contract       |
    +-----------------+--------------+---------------------------------+
    | transaction     | Client       | Client signs a full transaction |
-   |                 |              | with gas parameters             |
+   |                 |              | with a fee_limit                |
+   +-----------------+--------------+---------------------------------+
+   | transaction,    | Server       | Server delegates Energy (and    |
+   | resourceSponsor |              | Bandwidth) to the payer before  |
+   |                 |              | broadcasting (Section 11)       |
    +-----------------+--------------+---------------------------------+
    | hash            | Client       | Client broadcasts the           |
    |                 |              | transaction themselves          |
    +-----------------+--------------+---------------------------------+
 
-                                 Table 12
+                                 Table 15
 
-   For type="permit2" and type="authorization", the client signs only an
-   off-chain message — they never submit a transaction and therefore
-   cannot pay gas.  The server MUST maintain sufficient native token
-   balance to cover gas costs for these credential types.
+   For type="permit2" and type="authorization", the client signs only
+   an off-chain message; it never submits a transaction and therefore
+   cannot pay.  The server MUST hold sufficient Energy, Bandwidth or
+   TRX to cover these credential types and MUST set a bounded
+   fee_limit on the transactions it submits.
 
-   For type="transaction" and type="hash", the client is responsible for
-   gas.  The server broadcasts or verifies the transaction but does not
-   subsidize it.
+   For type="transaction" without sponsorship and for type="hash", the
+   client is responsible for the resources.  The server broadcasts or
+   verifies the transaction but does not subsidize it.
+
+   The challenge amount never includes or deducts network fees.  A
+   server that pays the resources recovers them, if at all, through
+   its pricing.
 
 6.  Verification Procedure
 
@@ -918,14 +1171,18 @@ Table of Contents
 
    1.  Decode the base64url credential and parse the JSON.
 
-   2.  Verify that payload.type is present and is one of "permit2",
-       "authorization", "transaction", or "hash".
+   2.  Verify that payload.type is present and is one of the credential
+       types accepted for the challenge.
 
-   3.  Look up the stored challenge using credential.challenge.id.  If
-       no matching challenge is found, reject the request.
+   3.  Verify the challenge binding per [I-D.httpauth-payment]: the
+       challenge id proves that the server issued the challenge and
+       that no echoed field (credential.challenge) differs from what
+       was issued.  A server MAY do this statelessly, by recomputing an
+       HMAC over the echoed parameters, or by looking up a stored
+       challenge.  If the binding does not verify, reject the request.
 
-   4.  Verify that all fields in credential.challenge exactly match the
-       stored challenge auth-params.
+   4.  Verify that the challenge has not expired and has not already
+       been consumed by an accepted payment (Section 8).
 
    5.  If the challenge includes splits and payload.type is not
        "permit2", reject the request.  (Only Permit2 supports atomic
@@ -941,22 +1198,29 @@ Table of Contents
 
        *  For type="hash": see Section 6.4.
 
+   Verification reads from the network but MUST NOT write to it.
+   Network writes (submission, broadcast, delegation, activation) are
+   part of settlement (Section 7, Section 11) and happen only after
+   verification has succeeded.
+
 6.1.  Permit2 Verification
 
    Before submitting, servers MUST verify:
 
-   1.   The TIP-712 signature is valid and recovers to the source
-        address
+   1.   The TIP-712 signature is valid over a message whose spender is
+        methodDetails.spender, the account the server will submit
+        from, and recovers to the address in source
 
    2.   The deadline has not passed
 
    3.   The signer has sufficient token balance for the total amount
         (primary + all splits)
 
-   4.   The signer has sufficient Permit2 allowance
+   4.   The signer has sufficient Permit2 allowance on currency
 
-   5.   The witness.challengeHash matches the expected value derived
-        from the challenge id and realm
+   5.   witness.challengeHash matches the value derived from the
+        challenge id and realm, and witness.externalId matches the
+        request (empty string when absent)
 
    6.   permitted and transferDetails arrays have equal length
 
@@ -971,172 +1235,200 @@ Table of Contents
         matches splits[i].recipient and
         transferDetails[i+1].requestedAmount matches splits[i].amount
 
-   After verification:
-
-   1.  For single transfers (permitted length 1): call
-       Permit2.permitWitnessTransferFrom()
-
-   2.  For batch transfers (permitted length > 1): call
-       Permit2.permitBatchWitnessTransferFrom()
-
-   3.  Verify the transaction receipt indicates success
-
-   4.  Verify Transfer event logs match all expected transfers
-
-   Servers SHOULD simulate the transaction via eth_call before
-   submitting to detect failures without spending gas.
+   Servers SHOULD simulate the transfer with a constant (read-only)
+   contract call, such as a node's triggerconstantcontract interface,
+   before submitting, to detect failures without spending resources.
 
 6.2.  Authorization Verification
 
    Before submitting, servers MUST verify:
 
-   1.   The currency token implements TIP-3009
+   1.  The currency token implements transferWithAuthorization
 
-   2.   The TIP-712 signature is valid and recovers to the from address
+   2.  The TIP-712 signature is valid and recovers to the from address
 
-   3.   to matches the challenge recipient
+   3.  to matches the challenge recipient
 
-   4.   value matches the challenge amount
+   4.  value matches the challenge amount
 
-   5.   nonce matches the expected challengeHash derived from the
-        challenge id and realm
+   5.  nonce matches the expected challengeHash derived from the
+       challenge id and realm
 
-   6.   validBefore has not passed
+   6.  validBefore has not passed
 
-   7.   The signer has sufficient token balance
+   7.  The signer has sufficient token balance
 
-   8.   Call transferWithAuthorization(from, to, value, validAfter,
-        validBefore, nonce, v, r, s) on the currency token contract
-
-   9.   Verify the transaction receipt indicates success
-
-   10.  Verify the Transfer event log matches the expected parameters
-
-   Servers SHOULD simulate the transaction via eth_call before
-   submitting to detect failures without spending gas.
+   Servers SHOULD simulate the transfer with a constant contract call
+   before submitting.
 
 6.3.  Transaction Verification
 
    Before broadcasting, servers MUST verify:
 
-   1.  Deserialize the RLP-encoded transaction from payload.signature
+   1.  Decode the protobuf Transaction from the hex in
+       payload.signature.
 
-   2.  Verify the transaction chainId matches methodDetails.chainId
+   2.  Compute the transaction ID as SHA-256 of raw_data.
 
-   3.  Verify the transaction to address matches the currency token
-       contract
+   3.  Verify that raw_data contains exactly one contract, of type
+       TriggerSmartContract.
 
-   4.  Verify the transaction calldata begins with the
-       transfer(address,uint256) function selector (0xa9059cbb)
+   4.  Verify that its contract_address matches currency and that
+       call_value and any TRC-10 value are zero.
 
-   5.  Decode the calldata and verify recipient and amount match the
-       challenge request
+   5.  Verify that the calldata begins with the
+       transfer(address,uint256) function selector (0xa9059cbb) and
+       decodes, with no trailing data, to the challenge recipient and
+       amount.
 
-   6.  Broadcast the transaction via eth_sendRawTransaction
+   6.  Verify that the signature is valid for owner_address over the
+       transaction ID.
 
-   7.  Wait for confirmation and fetch the transaction receipt
+   7.  Verify that the expiration has not passed.
 
-   8.  Verify the receipt status is 0x1 (success)
+   8.  Verify that the transaction ID has not been consumed
+       (Section 8).
 
-   9.  Verify the receipt contains a Transfer event log matching the
-       challenge parameters
+   9.  Verify that the owner account exists on the network (is
+       activated).  If it does not, reject the credential with
+       verification-failed, unless the server performs account
+       activation under Section 11.6.
+
+   A TRON transaction carries no chain ID.  It is bound to one network
+   by its reference block, which nodes of other networks reject.
+   Servers MUST broadcast only to a node of the network named by
+   chainId.
+
+   Multi-signature transactions and transactions signed under a
+   non-owner account permission are not covered by this version (see
+   Appendix C).
 
 6.4.  Hash Verification
 
    For hash credentials, servers MUST:
 
-   1.  Verify payload.hash has not been previously consumed (see
-       Section 8)
+   1.  Verify payload.hash is 32 bytes of hex and normalize it
+       (Section 5.5)
 
-   2.  Fetch the transaction receipt via eth_getTransactionReceipt
+   2.  Verify the normalized transaction ID has not been previously
+       consumed (Section 8)
 
-   3.  Verify status is 0x1 (success)
+   3.  Fetch the transaction info by ID from the network
 
-   4.  Verify the receipt contains a Transfer event log (topic
-       0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef):
+   4.  Verify the transaction is included in a block and its execution
+       result is SUCCESS (Section 10.9)
 
-       *  Log address matches currency
+   5.  Verify the transaction info contains a Transfer event (topic
+       ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+       where:
 
-       *  to parameter matches recipient
+       *  The emitting contract matches currency
 
-       *  value parameter matches amount
+       *  The to parameter matches recipient
 
-   5.  Mark the hash as consumed
+       *  The value parameter matches amount
+
+   6.  Apply the confirmation policy (Section 7.5)
+
+   7.  Mark the transaction ID as consumed
+
+   Event logs on TRON give addresses in their 20-byte form; servers
+   MUST compare them with the decoded 20-byte value of the challenge
+   addresses.
 
 7.  Settlement Procedure
 
+   For every credential type the payment succeeds only when the
+   settling transaction is included in a block, its execution result is
+   SUCCESS (Section 10.9), and its Transfer event(s) match the expected
+   transfers (Section 6.4, step 5).  For permit2 with splits, every
+   expected transfer MUST have its own matching event.
+
 7.1.  Permit2 Settlement
 
-   Client                  Server               TRON Chain
+   Client                  Server               TRON Network
      |                        |                      |
      | (1) Authorization:     |                      |
      |     Payment <cred>     |                      |
      |  (Permit2 signature)   |                      |
      |----------------------->|                      |
-     |                        | (2) Verify sig       |
+     |                        | (2) Verify sig,      |
+     |                        |     simulate         |
      |                        | (3) Submit permit-   |
-     |                        |  [Batch]Witness-     |
-     |                        |  TransferFrom()      |
+     |                        |  WitnessTransfer-    |
+     |                        |  From() from spender |
      |                        |--------------------->|
-     |                        | (4) Receipt          |
+     |                        | (4) Transaction info |
      |                        |  (all transfers      |
      |                        |   atomic in 1 tx)    |
      |                        |<---------------------|
      | (5) 200 OK + Receipt   |                      |
      |<-----------------------|                      |
 
-   For single transfers, the server calls permitWitnessTransferFrom().
-   When splits are present, the server calls
-   permitBatchWitnessTransferFrom(), executing the primary transfer and
-   all splits atomically in a single transaction.
+   For single transfers, the server calls the single overload of
+   permitWitnessTransferFrom().  When splits are present, the server
+   calls the batch overload, executing the primary transfer and all
+   splits atomically in a single transaction.
 
 7.2.  Authorization Settlement
 
-   Client                  Server               TRON Chain
+   Client                  Server               TRON Network
      |                        |                      |
      | (1) Authorization:     |                      |
      |     Payment <cred>     |                      |
-     |  (TIP-3009 signature)  |                      |
+     |  (signed authz)        |                      |
      |----------------------->|                      |
      |                        | (2) Verify sig       |
      |                        | (3) Submit transfer- |
      |                        |  WithAuthorization() |
      |                        |--------------------->|
-     |                        | (4) Receipt          |
+     |                        | (4) Transaction info |
      |                        |<---------------------|
      | (5) 200 OK + Receipt   |                      |
      |<-----------------------|                      |
 
 7.3.  Transaction Settlement
 
-   Client                  Server               TRON Chain
+   Client                  Server               TRON Network
      |                        |                      |
      | (1) Authorization:     |                      |
      |     Payment <cred>     |                      |
      |  (signed transaction)  |                      |
      |----------------------->|                      |
-     |                        | (2) Broadcast tx     |
+     |                        | (2) Verify           |
+     |                        | (3) Broadcast tx     |
+     |                        |     unchanged        |
      |                        |--------------------->|
-     |                        | (3) Confirmation     |
+     |                        | (4) Transaction info |
      |                        |<---------------------|
-     | (4) 200 OK + Receipt   |                      |
+     | (5) 200 OK + Receipt   |                      |
      |<-----------------------|                      |
+
+   The server broadcasts the client-signed transaction unchanged.  If
+   the node refuses the broadcast (for example: invalid signature,
+   reference block not on this chain, expired transaction, insufficient
+   resources or balance, contract validation error), the server MUST
+   answer with verification-failed, MUST NOT deliver the resource and
+   MUST NOT mark anything as consumed.
+
+   When the challenge offers resource sponsorship, settlement follows
+   Section 11.4 instead.
 
 7.4.  Hash Settlement
 
-   Client                  Server               TRON Chain
+   Client                  Server               TRON Network
      |                        |                      |
      | (1) Broadcast tx       |                      |
      |---------------------------------------------->|
-     | (2) Confirmed          |                      |
+     | (2) Included           |                      |
      |<----------------------------------------------|
      |                        |                      |
      | (3) Authorization:     |                      |
      |     Payment <cred>     |                      |
-     |  (tx hash)             |                      |
+     |  (transaction ID)      |                      |
      |----------------------->|                      |
-     |                        | (4) getTransaction-  |
-     |                        |     Receipt          |
+     |                        | (4) Get transaction  |
+     |                        |     info by ID       |
      |                        |--------------------->|
      |                        | (5) Verify           |
      |                        |<---------------------|
@@ -1145,22 +1437,24 @@ Table of Contents
 
 7.5.  Confirmation Requirements
 
-   Servers MUST wait for a successful transaction receipt (i.e., the
-   transaction has been included in at least one block) before returning
-   a Payment-Receipt header.
+   Servers MUST wait until the settling transaction is included in at
+   least one block with execution result SUCCESS before returning a
+   Payment-Receipt header.
 
-   The time between transaction submission and receipt availability
-   varies by chain and current network conditions.  Servers SHOULD NOT
-   assume a fixed confirmation latency.  Servers MAY use chain-specific
-   RPC optimizations (e.g., WebSocket subscriptions, synchronous send
-   methods) to minimize wait time.
+   TRON produces a block about every three seconds.  A block becomes
+   solidified, and can no longer be reverted, once more than two thirds
+   of the block producers have built on it, which typically takes about
+   one minute.  Servers SHOULD NOT assume a fixed confirmation latency.
 
-   This specification does not prescribe a required confirmation depth
-   beyond the initial receipt.  Finality semantics vary across chains —
-   some offer single-slot finality, while others (including L2 rollups)
-   settle to a separate layer for stronger guarantees.  The appropriate
-   confirmation depth for a given transaction is a server policy
-   decision outside the scope of this specification.
+   Whether to wait for solidification before returning the receipt is
+   a server policy decision.  Servers SHOULD offer it as a
+   configuration option, and MAY read solidified data through a node's
+   solidity interface.
+
+   A server that waits for a transaction it broadcast MUST bound the
+   wait.  If the transaction's expiration passes without inclusion, the
+   transaction can no longer be included and the server MUST treat the
+   payment as failed.
 
 7.6.  Receipt Generation
 
@@ -1174,11 +1468,13 @@ Table of Contents
        +=============+========+====================================+
        | Field       | Type   | Description                        |
        +=============+========+====================================+
-       | method      | string | "TRON"                              |
+       | method      | string | "tron"                             |
        +-------------+--------+------------------------------------+
        | challengeId | string | The id from the original challenge |
        +-------------+--------+------------------------------------+
-       | reference   | string | Transaction hash (0x-prefixed)     |
+       | reference   | string | Transaction ID of the settling     |
+       |             |        | transaction (64 lowercase hex      |
+       |             |        | characters, no prefix)             |
        +-------------+--------+------------------------------------+
        | status      | string | "success"                          |
        +-------------+--------+------------------------------------+
@@ -1190,7 +1486,10 @@ Table of Contents
        |             |        | challenge request                  |
        +-------------+--------+------------------------------------+
 
-                                  Table 13
+                                 Table 16
+
+   The reference MUST resolve, on the network named by chainId, to the
+   transaction that paid.
 
 8.  Replay Protection
 
@@ -1202,19 +1501,28 @@ Table of Contents
       by the Permit2 contract.
 
    *  *type="authorization"*: The combination of signer address and
-      TIP-3009 nonce serves as the replay token.  The nonce is consumed
-      on-chain by the token contract itself — providing contract-level
-      replay protection.
+      authorization nonce serves as the replay token.  The nonce is
+      consumed on-chain by the token contract itself, providing
+      contract-level replay protection.
 
-   *  *type="transaction"*: The transaction hash (derived after
-      broadcast) serves as the replay token.
+   *  *type="transaction"*: The transaction ID (SHA-256 of raw_data,
+      known before broadcast) serves as the replay token.
 
-   *  *type="hash"*: The transaction hash provided by the client serves
-      as the replay token.
+   *  *type="hash"*: The normalized transaction ID provided by the
+      client serves as the replay token.
+
+   Transaction IDs MUST be normalized (lowercase hex, no prefix) before
+   they are checked or stored, so that one transaction cannot be
+   presented twice in different spellings.
 
    Before accepting a credential, the server MUST check whether its
    replay token has already been consumed.  After successful
-   verification, the server MUST atomically mark it as consumed.
+   verification, the server MUST atomically mark it as consumed, so
+   that concurrent requests carrying the same credential cause at most
+   one settlement and one resource delivery.  The consumed set SHOULD
+   be shared by all server instances and survive restarts; entries for
+   type="hash" SHOULD be kept without expiry, because a transaction ID
+   stays valid on-chain forever.
 
 9.  Error Responses
 
@@ -1225,9 +1533,18 @@ Table of Contents
    application/problem+json.
 
    Servers MUST use the standard problem types defined in
-   [I-D.httpauth-payment]: malformed-credential, invalid-challenge, and
-   verification-failed.  The detail field SHOULD contain a human-
-   readable description of the specific failure.
+   [I-D.httpauth-payment]: malformed-credential, invalid-challenge,
+   payment-expired and verification-failed.  The detail field SHOULD
+   contain a human-readable description of the specific failure, for
+   example that the execution result was REVERT or that the payer
+   account is not activated.
+
+   A transaction that is included but whose execution result is not
+   SUCCESS is a verification failure, not a pending state.
+
+   When the server temporarily cannot settle (for example, its
+   resources for server-paid types are exhausted), it SHOULD indicate
+   when a retry makes sense with a Retry-After header.
 
    Example:
 
@@ -1248,10 +1565,13 @@ Table of Contents
 
 10.2.  Transaction Replay
 
-   TIP-1559 transactions include chain ID and nonce, preventing cross-
-   chain and same-chain replay.  Permit2 signatures include chain ID in
-   the TIP-712 domain separator and consume nonces on-chain.  The
-   expires auth-param limits the temporal window for credential use.
+   A TRON transaction is bound to one network by its reference block
+   and is valid only until its expiration.  A node rejects a
+   transaction whose ID it has already seen.  Permit2 and authorization
+   signatures include the chain ID in the TIP-712 domain and consume
+   nonces on-chain.  The expires auth-param limits the temporal window
+   for credential use, and the server's consumed set (Section 8)
+   prevents a credential from being accepted twice.
 
 10.3.  Amount Verification
 
@@ -1268,6 +1588,14 @@ Table of Contents
    5.  If splits are present, verify the sum of split amounts is
        strictly less than amount and all split recipients are expected
 
+   6.  For type="permit2", verify that permit2Address is a known
+       deployment for chainId (Section 4.2.4)
+
+   Clients SHOULD present each split recipient and amount to the user
+   and SHOULD make payments automatically only within an explicit
+   policy, such as a maximum amount per payment and a list of allowed
+   tokens and networks.
+
 10.4.  Hash Credential Binding
 
    Hash credentials (type="hash") and transaction credentials
@@ -1277,9 +1605,9 @@ Table of Contents
    created for a specific challenge instance.
 
    By contrast, type="permit2" and type="authorization" credentials
-   include a challengeHash — in the TIP-712 witness data (Permit2) or as
-   the on-chain nonce (TIP-3009) — cryptographically binding the
-   signature to the specific challenge id and realm.  This prevents
+   include a challengeHash (in the TIP-712 witness data for Permit2, or
+   as the on-chain nonce for authorization), cryptographically binding
+   the signature to the specific challenge id and realm.  This prevents
    signature reuse across challenges, even if payment parameters are
    identical.  This is a key reason off-chain signature types are
    preferred.
@@ -1294,40 +1622,51 @@ Table of Contents
 
 10.5.  Permit2-Specific Risks
 
-   *Allowance Prerequisite*: Permit2 requires a one-time TRC-20
-   approve() to the Permit2 contract.  Clients should understand they
-   are granting approval to a third-party contract.  The Permit2
-   contract is widely deployed and audited, but clients SHOULD verify
-   the contract address matches the canonical deployment.
+   *Allowance Prerequisite*: Permit2 requires a TRC-20 approve() to the
+   Permit2 contract.  Clients should understand they are granting
+   approval to a third-party contract.  Because TRON has no canonical
+   Permit2 address, an attacker-controlled challenge could name a
+   malicious contract as permit2Address; clients MUST NOT approve, and
+   SHOULD NOT sign for, a contract that is not a known deployment for
+   the network.
 
    *Nonce Management*: Permit2 nonces are consumed on-chain.  If a
    server fails to submit a Permit2 credential, the nonce remains
-   unconsumed and the client can reuse it.  Servers MUST handle nonce
-   conflicts gracefully.
+   unconsumed and the client can reuse it.  Servers MUST handle an
+   already-consumed nonce as a normal verification failure.
+
+   *Spender*: The client signs for the spender named in the challenge.
+   Only that address can execute the transfer, which prevents a third
+   party that intercepts the credential from submitting it.
 
 10.6.  Fee Payer Risks
 
-   With type="permit2", the server pays gas on every settlement.  This
-   creates financial risk:
+   With type="permit2" and type="authorization", the server pays the
+   network resources on every settlement, including for transactions
+   that fail on-chain.  This creates financial risk:
 
    *Denial of Service*: Malicious clients could submit credentials that
-   fail on-chain, causing the server to pay gas without receiving
-   payment.  Mitigations:
+   fail on-chain, causing the server to pay without receiving payment.
+   Mitigations:
 
-   *  Simulate transactions via eth_call before broadcast
+   *  Simulate transfers with a constant contract call before
+      submitting
 
    *  Rate limit per client address and IP
 
-   *  Verify client token balance before submitting
+   *  Verify client token balance and allowance before submitting
 
    *  Require client authentication before accepting credentials
 
-   *Balance Exhaustion*: Servers MUST monitor their native token balance
-   and reject new requests when insufficient to cover gas.
+   *Resource Exhaustion*: Servers MUST monitor their Energy, Bandwidth
+   and TRX balance and MUST stop offering server-paid credential types
+   when they cannot cover a settlement.
 
-   Gas costs vary significantly across TRON chains.  On low-fee chains,
-   fee sponsorship is negligible (<$0.001/tx).  On TRON L1, gas
-   costs may be significant and servers SHOULD factor this into pricing.
+   The Energy cost of a TRC-20 transfer varies with the token contract,
+   with whether the recipient already holds the token, and with the
+   network's dynamic energy parameters for heavily used contracts.
+   Servers SHOULD factor this into pricing and SHOULD set fee_limit
+   with margin above a simulated estimate.
 
 10.7.  Split Payment Risks
 
@@ -1336,21 +1675,230 @@ Table of Contents
    SHOULD highlight when the primary recipient receives a small
    remainder relative to the total amount.
 
-   *Batch Failure*: With Permit2 batch transfers, splits are atomic —
+   *Batch Failure*: With Permit2 batch transfers, splits are atomic:
    all succeed or all revert.  A failure in any split causes the entire
    payment (including the primary transfer) to revert.  Servers SHOULD
-   simulate the batch via eth_call before submitting to detect failures
-   early.
+   simulate the batch with a constant contract call before submitting
+   to detect failures early.
 
-10.8.  RPC Trust
+10.8.  Node Trust
 
-   Servers rely on their RPC endpoint for transaction data.  A
-   compromised RPC could return fabricated data.  Servers SHOULD use
-   trusted RPC providers or run their own nodes.
+   Servers rely on their TRON node for transaction data.  A compromised
+   or faulty node could return fabricated data.  Servers SHOULD use
+   trusted node providers or run their own nodes, and MUST treat node
+   errors, timeouts and inconsistent answers as verification failure,
+   never as success.
 
-11.  IANA Considerations
+10.9.  Execution Result of Included Transactions
 
-11.1.  Payment Method Registration
+   Unlike a rejected broadcast, a TRON transaction that fails during
+   execution (for example with result REVERT, OUT_OF_ENERGY or
+   OUT_OF_TIME) is still included in a block, has a valid transaction
+   ID and still costs its sender resources.  Inclusion alone therefore
+   proves nothing.  Servers MUST check the execution result in the
+   transaction info and MUST accept a transaction only when the result
+   is SUCCESS and the expected Transfer event is present.  A failed
+   result is definitive; servers MUST NOT keep polling for a change.
+
+11.  Resource Sponsorship (TRON Extension)
+
+   This section defines an extension that has no counterpart in
+   [I-D.evm-charge].  Servers and clients MAY implement it.
+
+11.1.  Overview
+
+   Many TRON users hold TRC-20 tokens, most often USDT, but little or
+   no TRX, and therefore cannot pay the Energy for a token transfer.
+   On TRON it is common practice for another account to delegate
+   Energy and Bandwidth to such users [TIP-467].
+
+   With resource sponsorship, the server delegates the resources a
+   type="transaction" payment needs to the payer's account just before
+   broadcasting the client-signed transfer, and reclaims them
+   afterwards.  The payer signs the same transfer as without
+   sponsorship and pays only the token amount.
+
+   Sponsorship does not change the credential: it remains
+   type="transaction" with the payload of Section 5.4.  It changes only
+   which account provides the resources.
+
+11.2.  The resourceSponsor Field
+
+   methodDetails.resourceSponsor is an OPTIONAL boolean.  When true, the
+   server will provide the Energy and Bandwidth for a type="transaction"
+   credential by resource delegation.
+
+   *  Servers MUST set resourceSponsor to true only when "transaction"
+      is an accepted credential type, sponsorship is configured, and
+      the server currently has the resources to sponsor.
+
+   *  resourceSponsor does not affect amount, the other credential
+      types, or splits.  Splits still require type="permit2".
+
+   *  A client that does not implement this extension ignores the
+      field (Section 4.2) and pays its own resources; the payment
+      remains valid.
+
+11.3.  Client Behavior
+
+   Under a challenge with resourceSponsor true, a client MAY sign a
+   type="transaction" credential without holding the Energy and
+   Bandwidth for the transfer.  The client MUST still sign a fully
+   valid transaction (Section 5.4), including a fee_limit, and SHOULD
+   set its expiration late enough to leave the server time for the
+   sponsorship steps of Section 11.4 (at least several blocks), while
+   not later than the challenge expires.
+
+11.4.  Server Procedure
+
+   For a type="transaction" credential under a challenge with
+   resourceSponsor true, the server MUST, in order:
+
+   1.  Perform the verification of Section 6 and Section 6.3, including
+       the replay check (Section 8).
+
+   2.  Verify that the remaining time before the transaction's
+       expiration covers the following steps; otherwise reject the
+       credential without spending any resources.
+
+   3.  Simulate the transfer with a constant contract call to confirm
+       it would succeed and to estimate the Energy it needs.
+
+   4.  If the payer account is not activated, activate it under
+       Section 11.6 if the server allows activation, and wait for that
+       transaction to be included; otherwise reject the credential.
+
+   5.  Delegate Energy, and Bandwidth if the payer cannot cover the
+       transaction size, to the payer address (Section 11.5), and wait
+       until the delegation is included.
+
+   6.  Broadcast the client-signed transaction unchanged and complete
+       settlement as in Section 7.3 and Section 7.5.
+
+   7.  Reclaim the delegation (Section 11.5).
+
+   Sponsored payments for the same payer address MUST be processed one
+   at a time, so that concurrent credentials never cause parallel
+   activations or delegations to one account.
+
+   Client                  Server               TRON Network
+     |                        |                      |
+     | (1) Authorization:     |                      |
+     |     Payment <cred>     |                      |
+     |  (signed transaction)  |                      |
+     |----------------------->|                      |
+     |                        | (2) Verify, replay   |
+     |                        |     check, simulate  |
+     |                        |<-------------------->|
+     |                        | (3) Activate payer   |
+     |                        |     (only if allowed)|
+     |                        |--------------------->|
+     |                        | (4) Delegate Energy  |
+     |                        |     to payer         |
+     |                        |--------------------->|
+     |                        | (5) Broadcast tx     |
+     |                        |     unchanged        |
+     |                        |--------------------->|
+     |                        | (6) Transaction info |
+     |                        |<---------------------|
+     | (7) 200 OK + Receipt   |                      |
+     |<-----------------------|                      |
+     |                        | (8) Reclaim          |
+     |                        |     delegation       |
+     |                        |--------------------->|
+
+11.5.  Delegation Bounds and Reclaim
+
+   *  The server MUST NOT delegate more Energy than the simulated
+      estimate plus a bounded margin, and SHOULD enforce a configured
+      maximum per payment.
+
+   *  The server MUST delegate without a lock period, so that the
+      delegation can be reclaimed immediately.
+
+   *  The server MUST reclaim the delegation after the payment
+      succeeds, fails or times out.  Reclaiming SHOULD NOT delay the
+      Payment-Receipt.
+
+   *  A server MUST reclaim delegations left outstanding by an
+      interruption, such as a restart, as soon as it resumes.
+
+11.6.  Account Activation
+
+   Resource delegation to an address that is not yet an activated
+   account does not succeed.  A server MAY activate such an address,
+   subject to the following rules:
+
+   *  Account activation MUST be disabled unless the server operator
+      enables it explicitly.
+
+   *  When enabled, the server MUST activate an address only for a
+      sponsored payment that has passed every other check, including
+      the replay check and the simulation of Section 11.4.
+
+   *  The server SHOULD activate with an AccountCreateContract
+      transaction of account type Normal, which creates the account
+      without transferring TRX to the payer.  The server MUST read the
+      account creation fee from the network's chain parameters rather
+      than assume a fixed value.
+
+   *  The server MUST NOT activate when the payment amount is below a
+      configured minimum, or when a configured activation budget for
+      the current period is spent.  It then rejects the credential as
+      in Section 6.3.
+
+   Activation cannot be reversed.  Its fee is a permanent cost to the
+   server, which is why it is disabled by default.
+
+11.7.  Error Handling
+
+   *  A payer account that is not activated, when the server does not
+      or may not activate it, yields verification-failed with a detail
+      saying so.
+
+   *  A failed simulation, delegation or activation yields
+      verification-failed, and nothing is broadcast.
+
+   *  When the server's delegation resources or activation budget are
+      temporarily exhausted, it SHOULD stop offering resourceSponsor in
+      new challenges and SHOULD use Retry-After where a retry makes
+      sense.
+
+   *  A failed sponsored payment never leaves a delegation in place
+      (Section 11.5).
+
+11.8.  Security Considerations
+
+   *Delegated resources belong to the payer*: Between delegation and
+   broadcast, the delegated Energy and Bandwidth can be used by the
+   payer's account for any transaction.  A malicious payer can, for
+   example, move its tokens away before the server broadcasts the
+   payment, so that the payment fails after the server has paid for
+   the delegation and possibly an activation.  This risk cannot be
+   removed, only bounded.  Type="permit2", where the server executes
+   the transfer itself, has no such exposure and remains the preferred
+   server-paid type.
+
+   Servers MUST bound what a failed sponsored payment can cost them: at
+   most one activation fee and the delegation of Section 11.5 per
+   attempt, with sponsored attempts rate limited per payer address and
+   IP, and activations limited separately.  Servers SHOULD stop
+   sponsoring addresses or IP addresses whose sponsored payments
+   repeatedly fail after delegation.
+
+   *Activation abuse*: An attacker can create fresh addresses at no
+   cost.  The minimum payment amount and the activation budget of
+   Section 11.6 limit how much activation fees such an attacker can
+   cause.
+
+   *Expiration*: Sponsorship adds at least two block intervals before
+   the broadcast.  A server that starts spending on a transaction close
+   to its expiration can pay for a payment that can no longer settle;
+   the check in step 2 of Section 11.4 prevents this.
+
+12.  IANA Considerations
+
+12.1.  Payment Method Registration
 
    This document registers the following payment method in the "HTTP
    Payment Methods" registry established by [I-D.httpauth-payment]:
@@ -1358,15 +1906,15 @@ Table of Contents
        +===================+===========================+===========+
        | Method Identifier | Description               | Reference |
        +===================+===========================+===========+
-       | TRON               | TRON-compatible blockchain | This      |
-       |                   | TRC-20 token transfer     | document  |
+       | tron              | TRC-20 token transfer on  | This      |
+       |                   | the TRON network          | document  |
        +-------------------+---------------------------+-----------+
 
-                                  Table 14
+                                 Table 17
 
-   Contact: Brett DiNovi (bread@megaeth.com (mailto:bread@megaeth.com))
+   Contact: TRON MPP Taskforce, TRON DAO (dev@trondao.com)
 
-11.2.  Payment Intent Registration
+12.2.  Payment Intent Registration
 
    This document registers the following payment intent in the "HTTP
    Payment Intents" registry established by [I-D.httpauth-payment]:
@@ -1375,15 +1923,15 @@ Table of Contents
       | Intent | Applicable | Description               | Reference |
       |        | Methods    |                           |           |
       +========+============+===========================+===========+
-      | charge | TRON        | One-time TRC-20 token     | This      |
-      |        |            | transfer on any TRON chain | document  |
+      | charge | tron       | One-time TRC-20 token     | This      |
+      |        |            | transfer on TRON          | document  |
       +--------+------------+---------------------------+-----------+
 
-                                  Table 15
+                                 Table 18
 
-12.  References
+13.  References
 
-12.1.  Normative References
+13.1.  Normative References
 
    [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
               Requirement Levels", BCP 14, RFC 2119,
@@ -1398,12 +1946,12 @@ Table of Contents
               Encodings", RFC 4648, DOI 10.17487/RFC4648, October 2006,
               <https://www.rfc-editor.org/info/rfc4648>.
 
-   [RFC8174]  Leiba, B., "Ambiguity of UppTRCase vs LowTRCase in RFC
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
               2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
               May 2017, <https://www.rfc-editor.org/info/rfc8174>.
 
    [RFC8259]  Bray, T., Ed., "The JavaScript Object Notation (JSON) Data
-              IntTRChange Format", STD 90, RFC 8259,
+              Interchange Format", STD 90, RFC 8259,
               DOI 10.17487/RFC8259, December 2017,
               <https://www.rfc-editor.org/info/rfc8259>.
 
@@ -1427,57 +1975,84 @@ Table of Contents
               January 2026, <https://datatracker.ietf.org/doc/draft-
               ryan-httpauth-payment/>.
 
-12.2.  Informative References
+   [TIP-712]  TRON Improvement Proposals, "TIP-712: TRON Typed
+              Structured Data Hashing and Signing",
+              <https://github.com/tronprotocol/tips/blob/master/
+              tip-712.md>.
 
-   [EIP-712]  Bloemen, R., "Typed structured data hashing and signing",
-              September 2017, <https://eips.ethereum.org/EIPS/eip-712>.
-
-   [EIP-1559] "Fee market change for ETH 1.0 chain", n.d.,
-              <https://eips.ethereum.org/EIPS/eip-1559>.
-
-   [EIP-55]   "Mixed-case checksum address encoding", n.d.,
-              <https://eips.ethereum.org/EIPS/eip-55>.
-
-   [TRC-20]   "Token Standard", n.d.,
-              <https://eips.ethereum.org/EIPS/eip-20>.
-
-   [EIP-3009] Kim, P. J., "Transfer With Authorization", September 2019,
-              <https://eips.ethereum.org/EIPS/eip-3009>.
+   [TRC-20]   TRON Improvement Proposals, "TIP-20: TRC-20 Token
+              Standard",
+              <https://github.com/tronprotocol/tips/blob/master/
+              tip-20.md>.
 
    [PERMIT2]  Uniswap Labs, "Permit2", n.d.,
               <https://github.com/Uniswap/permit2>.
 
-Appendix A.  Full Example: Permit2 Charge on TRON  #TODO
+13.2.  Informative References
+
+   [I-D.evm-charge]
+              "EVM Charge Intent for HTTP Payment Authentication",
+              Work in Progress, Internet-Draft, draft-evm-charge-00,
+              2 November 2026.
+
+   [EIP-712]  Bloemen, R., "Typed structured data hashing and signing",
+              September 2017, <https://eips.ethereum.org/EIPS/eip-712>.
+
+   [EIP-3009] Kim, P. J., "Transfer With Authorization", September 2019,
+              <https://eips.ethereum.org/EIPS/eip-3009>.
+
+   [TIP-467]  TRON Improvement Proposals, "TIP-467: Stake 2.0",
+              <https://github.com/tronprotocol/tips/blob/master/
+              tip-467.md>.
+
+   [TRON-DOCS]
+              TRON DAO, "TRON Developer Hub",
+              <https://developers.tron.network/>.
+
+   [DID-PKH]  W3C Credentials Community Group, "did:pkh Method
+              Specification",
+              <https://github.com/w3c-ccg/did-pkh/blob/main/
+              did-pkh-method-draft.md>.
+
+Appendix A.  Full Example: Permit2 Charge on TRON Nile
 
    *1.  Challenge (402 response):*
 
    HTTP/1.1 402 Payment Required
    WWW-Authenticate: Payment id="aB3cDeF4gHiJkLmN",
      realm="api.example.com",
-     method="TRON",
+     method="tron",
      intent="charge",
-     request="eyJhbW91bnQiOiIxMDAwMDAwMDAwMDAwMDAwMDAwIiwiY3
-       VycmVuY3kiOiIweEZBZkRkYmIzRkM3Njg4NDk0OTcxYTc5Y2M2NU
-       RDYTNFRjgyMDc5RTciLCJtZXRob2REZXRhaWxzIjp7ImNoYWluSWQ
-       iOjQzMjYsImNyZWRlbnRpYWxUeXBlcyI6WyJwZXJtaXQyIl19LCJ
-       yZWNpcGllbnQiOiIweDc0MmQzNUNjNjYzNEMwNTMyOTI1YTNiODQ0
-       QmM5ZTc1OTRONOGZFMDAifQ",
+     request="eyJhbW91bnQiOiIxMDAwMDAwIiwiY3VycmVuY3kiOiJUSDQyR1VZ
+       Q2JMeUwyY0VyVXNVbXk1Z1JuQ2V5RjZWSGRYIiwibWV0aG9kRGV0YWlscyI6
+       eyJjaGFpbklkIjozNDQ4MTQ4MTg4LCJjcmVkZW50aWFsVHlwZXMiOlsicGVy
+       bWl0MiJdLCJkZWNpbWFscyI6NiwicGVybWl0MkFkZHJlc3MiOiJURWV0UTVv
+       aHRLRjVlQUY5ZWM2amJ2ZFR6Y0xEc0I2alRzIiwic3BlbmRlciI6IlRWcktM
+       ekZpMkFWbm8xd3hZM2J1azVOdVR3d3RQU0dlWGYifSwicmVjaXBpZW50Ijoi
+       VExlTjlRclhOU3dxd25pVzZDNDhBYUVQSFpHdEt5V2VLbSJ9",
      expires="2026-04-01T12:05:00Z"
    Cache-Control: no-store
+
+   (The request value is one string; it is wrapped here for display.)
 
    Decoded request:
 
    {
-     "amount": "1000000000000000000",
-     "currency": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
-     "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
+     "amount": "1000000",
+     "currency": "TH42GUYCbLyL2cErUsUmy5gRnCeyF6VHdX",
      "methodDetails": {
-       "chainId": 4326,
-       "credentialTypes": ["permit2"]
-     }
+       "chainId": 3448148188,
+       "credentialTypes": ["permit2"],
+       "decimals": 6,
+       "permit2Address": "TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs",
+       "spender": "TVrKLzFi2AVno1wxY3buk5NuTwwtPSGeXf"
+     },
+     "recipient": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm"
    }
 
-   This requests 1.0 USDT (10^6 base units) on TRON Nile (chain 4326).
+   This requests 1.0 unit of a 6-decimal TRC-20 test token
+   (1,000,000 base units) on the Nile testnet.  The token and the
+   recipient, spender and payer addresses are example values.
 
    *2.  Credential (Permit2 authorization):*
 
@@ -1491,9 +2066,9 @@ Appendix A.  Full Example: Permit2 Charge on TRON  #TODO
      "challenge": {
        "id": "aB3cDeF4gHiJkLmN",
        "realm": "api.example.com",
-       "method": "TRON",
+       "method": "tron",
        "intent": "charge",
-       "request": "eyJ...",
+       "request": "eyJhbW91bnQiOiIxMDAwMDAwIiwiY3VycmVuY3kiOi...",
        "expires": "2026-04-01T12:05:00Z"
      },
      "payload": {
@@ -1501,31 +2076,46 @@ Appendix A.  Full Example: Permit2 Charge on TRON  #TODO
        "permit": {
          "permitted": [
            {
-             "token": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
-             "amount": "1000000000000000000"
+             "token": "TH42GUYCbLyL2cErUsUmy5gRnCeyF6VHdX",
+             "amount": "1000000"
            }
          ],
          "nonce": "1",
-         "deadline": "1743523500"
+         "deadline": "1775045100"
        },
        "transferDetails": [
          {
-           "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE00",
-           "requestedAmount": "1000000000000000000"
+           "to": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm",
+           "requestedAmount": "1000000"
          }
        ],
        "witness": {
-         "challengeHash": "0x8a3b...f1c2"
+         "challengeHash": "0x899e3a8f...6f281d",
+         "externalId": ""
        },
        "signature": "0x1b2c3d4e5f..."
      },
-     "source": "did:pkh:eip155:4326:0x1234...5678"
+     "source": "did:pkh:tron:0xcd8690dc:TBrgfKc9...uWAnU2KN"
    }
+
+   The TIP-712 domain is {"name": "Permit2", "chainId": 3448148188,
+   "verifyingContract": "0x33619cd260f343751cc17c236190d310d2cffc01"},
+   the 20-byte form of the Nile Permit2 address.  challengeHash is
+   keccak256 of the UTF-8 bytes of "aB3cDeF4gHiJkLmNapi.example.com":
+
+   0x899e3a8fe6830644e150b972d4ba1fce
+     69bcdf0bf9ea7f13d57cada71c6f281d
+
+   The payer's full source DID is
+   did:pkh:tron:0xcd8690dc:TBrgfKc9vXVE3ctTvXiZpXYAT1uWAnU2KN.
+   Long values in the JSON examples of this document are shortened
+   with "...".
 
    *3.  Response (with receipt):*
 
    HTTP/1.1 200 OK
    Payment-Receipt: <base64url-encoded receipt>
+   Cache-Control: private
    Content-Type: application/json
 
    {"response": "resource data"}
@@ -1533,18 +2123,149 @@ Appendix A.  Full Example: Permit2 Charge on TRON  #TODO
    Decoded receipt:
 
    {
-     "method": "TRON",
+     "method": "tron",
      "challengeId": "aB3cDeF4gHiJkLmN",
-     "reference": "0xabc123...",
+     "reference": "3f8c...e41a",
      "status": "success",
      "timestamp": "2026-04-01T12:04:58Z",
-     "chainId": 4326
+     "chainId": 3448148188
    }
 
+Appendix B.  Full Example: Sponsored Transaction Charge on TRON Nile
 
-Appendix B.  Acknowledgements
+   *1.  Challenge (402 response):*
 
-   TBD
+   HTTP/1.1 402 Payment Required
+   WWW-Authenticate: Payment id="rS7pOnSoRtX9qLm2",
+     realm="api.example.com",
+     method="tron",
+     intent="charge",
+     request="eyJhbW91bnQiOiIxMDAwMDAwIiwiY3VycmVuY3kiOiJUSDQyR1VZ
+       Q2JMeUwyY0VyVXNVbXk1Z1JuQ2V5RjZWSGRYIiwibWV0aG9kRGV0YWlscyI6
+       eyJjaGFpbklkIjozNDQ4MTQ4MTg4LCJjcmVkZW50aWFsVHlwZXMiOlsidHJh
+       bnNhY3Rpb24iXSwiZGVjaW1hbHMiOjYsInBlcm1pdDJBZGRyZXNzIjoiVEVl
+       dFE1b2h0S0Y1ZUFGOWVjNmpidmRUemNMRHNCNmpUcyIsInJlc291cmNlU3Bv
+       bnNvciI6dHJ1ZX0sInJlY2lwaWVudCI6IlRMZU45UXJYTlN3cXduaVc2QzQ4
+       QWFFUEhaR3RLeVdlS20ifQ",
+     expires="2026-04-01T12:05:00Z"
+   Cache-Control: no-store
+
+   Decoded request:
+
+   {
+     "amount": "1000000",
+     "currency": "TH42GUYCbLyL2cErUsUmy5gRnCeyF6VHdX",
+     "methodDetails": {
+       "chainId": 3448148188,
+       "credentialTypes": ["transaction"],
+       "decimals": 6,
+       "permit2Address": "TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs",
+       "resourceSponsor": true
+     },
+     "recipient": "TLeN9QrXNSwqwniW6C48AaEPHZGtKyWeKm"
+   }
+
+   *2.  Credential (signed transfer, payer holds no Energy):*
+
+   {
+     "challenge": {
+       "id": "rS7pOnSoRtX9qLm2",
+       "realm": "api.example.com",
+       "method": "tron",
+       "intent": "charge",
+       "request": "eyJhbW91bnQiOiIxMDAwMDAwIiwiY3VycmVuY3kiOi...",
+       "expires": "2026-04-01T12:05:00Z"
+     },
+     "payload": {
+       "signature": "0a8f010a02...signed transaction bytes...",
+       "type": "transaction"
+     },
+     "source": "did:pkh:tron:0xcd8690dc:TBrgfKc9...uWAnU2KN"
+   }
+
+   *3.  Server actions on the network (Section 11.4):*
+
+   1.  Verify the transaction and simulate the transfer; the estimate
+       is E Energy.
+
+   2.  Payer account is activated: no activation needed.
+
+   3.  Delegate at most E plus margin Energy to
+       TBrgfKc9vXVE3ctTvXiZpXYAT1uWAnU2KN, without lock; wait for
+       inclusion.
+
+   4.  Broadcast the client's transaction; wait for inclusion with
+       result SUCCESS and a matching Transfer event.
+
+   5.  Return 200 with a receipt whose reference is the client
+       transaction's ID; then reclaim the delegation.
+
+   The payer's TRX balance is unchanged by the payment.
+
+Appendix C.  Open Issues
+
+   This appendix lists questions to resolve before publication.  It is
+   to be removed by the RFC Editor.
+
+   1.   Address wire format: this document uses Base58Check.  The
+        alternatives are 41-prefixed or 0x-prefixed 20-byte hex.  The
+        prefix convention for transaction IDs and other hashes is also
+        open.
+
+   2.   source DID: the did:pkh form for TRON (namespace "tron",
+        hexadecimal chain ID, Base58Check address) needs to be
+        confirmed against the CAIP-2 registration for TRON.
+
+   3.   Encoding of the signed transaction in payload.signature:
+        hex of the protobuf Transaction (this document) or the JSON
+        form returned by node APIs.
+
+   4.   Multi-signature transactions and transactions signed under
+        account permissions other than owner.
+
+   5.   Broadcast of a transaction the node already knows (the client
+        also broadcast it): reject, or verify it as type="hash".
+
+   6.   Default confirmation policy: first block or solidified.
+
+   7.   Behavior while a settlement outcome is unknown (timeout):
+        response code, and whether the client may retry the same
+        credential.
+
+   8.   type="authorization": no widely used TRC-20 token on TRON is
+        known to implement transferWithAuthorization.  The type may be
+        removed from this method or kept for future tokens.
+
+   9.   Witness type string: the text rendering of [I-D.evm-charge]
+        shows a space after the comma in "bytes32 challengeHash,
+        string externalId", which TIP-712 and EIP-712 type encoding do
+        not allow.  The string in Section 5.2.3 omits it.  Both methods
+        should use the same string.
+
+   10.  spender: [I-D.evm-charge] does not carry the Permit2 spender in
+        the challenge, although the Permit2 signature commits to it.
+        This document adds methodDetails.spender; the EVM method
+        should be aligned.
+
+   11.  Permit2 deployments: the listed addresses need verified source
+        code; the two deployments are functionally identical but not
+        byte-identical.
+
+   12.  Resource sponsorship: field name and shape (boolean or an
+        object with limits); delegation from the server's own stake
+        versus a resource rental provider; activation by
+        AccountCreateContract only, or also by TRX transfer.
+
+   13.  To be confirmed on the Nile testnet: whether an unactivated
+        account can send any transaction; whether the free daily
+        Bandwidth always covers one TRC-20 transfer; accuracy of the
+        Energy estimate from simulation; how reclaimed delegations
+        account for consumed Energy; the current account creation fee.
+
+Appendix D.  Acknowledgements
+
+   This document is derived from [I-D.evm-charge].  The authors thank
+   its authors for the structure and the payment flows it defines.
 
 Authors' Addresses
 

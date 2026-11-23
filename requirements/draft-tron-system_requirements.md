@@ -8,8 +8,9 @@ Charge = one-time transfer per request. Session = escrow payment channel with of
 
 Baseline
 - base   = `draft-httpauth-payment-01` (9 Sep 2026, expires 13 Mar 2027) -> `base-httpauth-payment.md` (BASE-xxx)
-- charge = `draft-evm-charge-00` (2 Nov 2026, expires 6 May 2027) -> `evm-charge.md` (EVM-xxx); section numbers are the
-  same in the working copy `draft-tron-charge.txt`
+- charge = `draft-evm-charge-00` (2 Nov 2026, expires 6 May 2027) -> `evm-charge.md` (EVM-xxx); the TRON method
+  spec `draft-tron-charge.txt` ("tron-charge", 23 Nov 2026) keeps its sections 1-10; it adds section 11 (resource
+  sponsorship, TRON extension), so IANA and References are sections 12-13 there
 - session = `draft-evm-session-00` (11 Nov 2026, expires 15 May 2027) -> `evm-session.md` (SES-xxx)
 - sdk    = mpp.dev "Custom payment methods" page, First-party SDK section and Gotchas (read 12 Nov 2026)
 
@@ -156,7 +157,8 @@ Sections
 - Source: -
 - TRON: new
 - Status: open
-- Text: The server `charge(...)` factory takes recipient, currency, chainId, TRON node endpoint, accepted credential types, confirmation policy, a `Store` for replay protection (SYS-710, SYS-711) and (for server-paid types) a fee payer signer; invalid or inconsistent configuration, including a missing store, fails at creation, not on the first request.
+- Text: The server `charge(...)` factory takes recipient, currency, chainId, TRON node endpoint, accepted credential types, confirmation policy, a `Store` for replay protection (SYS-710, SYS-711) and (for server-paid types) a fee payer signer; optionally it takes resource sponsorship settings (SYS-215: the delegating account, an Energy cap per payment) and account activation settings (SYS-517: disabled unless explicitly enabled, minimum payment amount, budget per period); invalid or inconsistent configuration, including a missing store or activation enabled without sponsorship, fails at creation, not on the first request.
+- Note: For permit2 the fee payer address is published in every challenge as methodDetails.spender (SYS-204).
 
 ## SYS-007 Client factory configuration
 - Spec: project
@@ -309,10 +311,10 @@ the credential type and is expanded in section 6.
 
 | Step | Requirements |
 |---|---|
-| (1)-(2) challenge issuance | SYS-101..SYS-115, SYS-119..SYS-125, SYS-201..SYS-214 |
+| (1)-(2) challenge issuance | SYS-101..SYS-115, SYS-119..SYS-125, SYS-201..SYS-215 |
 | (3) client fulfilment | SYS-304, SYS-305, SYS-310..SYS-330 |
 | (4) credential transport | SYS-116..SYS-118, SYS-301..SYS-303 |
-| (5) verification and settlement | SYS-401..SYS-405, SYS-501..SYS-514, SYS-710..SYS-713 |
+| (5) verification and settlement | SYS-401..SYS-405, SYS-501..SYS-518, SYS-710..SYS-713 |
 | (6) success response | SYS-601, SYS-124 |
 | any rejection | SYS-602, SYS-701..SYS-705 |
 
@@ -615,7 +617,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-042
 - TRON: same
 - Status: open
-- Text: The server uses Retry-After to tell clients when a retry makes sense (for example while rate limited or while the fee payer is out of resources).
+- Text: The server uses Retry-After to tell clients when a retry makes sense (for example while rate limited, while the fee payer is out of resources, or while the delegation pool or activation budget of SYS-510 is exhausted).
 
 ## SYS-126 Request flow completes through the SDK
 - Spec: base §3; sdk
@@ -694,8 +696,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-004
 - TRON: adapt
 - Status: open
-- Text: All TRON-specific fields are nested under methodDetails; methodDetails.chainId is a required number identifying the TRON network; methodDetails.permit2Address is required and equals the Permit2 deployment of SYS-014 for that chainId.
-- Note: Decision D2 (resolved): always required, as in the EVM draft. TRON has no canonical cross-chain Permit2 address, so there is no default; a server on a network without a listed deployment cannot issue challenges that need this field until one is added to SYS-014.
+- Text: All TRON-specific fields are nested under methodDetails; methodDetails.chainId is a required number identifying the TRON network; when permit2 is an accepted credential type (which includes every challenge with splits), methodDetails.permit2Address is required and equals the Permit2 deployment of SYS-014 for that chainId, and methodDetails.spender is required and equals the address the server submits Permit2 transfers from (its fee payer account); without permit2 both may be omitted; methodDetails.resourceSponsor is optional (SYS-215).
+- Note: Decision D2 (revised 23 Nov 2026): permit2Address has no default and is required only when permit2 is offered, so a network without a Permit2 deployment (Shasta at present) can still issue transaction and hash challenges. spender is not in the EVM draft: Permit2 signatures commit to the spender and the contract checks it against the caller, so the client cannot sign without it (tron-charge Appendix C, open issue 10).
 
 ## SYS-205 Client rejects unsupported chainId
 - Spec: charge §4.2.1
@@ -820,6 +822,19 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Status: open
 - Text: The client exposes every split recipient and amount to the confirmation hook (SYS-305) and flags a primary remainder that is small relative to the total.
 
+## SYS-215 Resource sponsorship field
+- Spec: project; tron-charge §11.2
+- Level: MUST (project)
+- Role: Both
+- Verification: ST
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: methodDetails.resourceSponsor is an optional boolean; true means the server provides the Energy and Bandwidth for a transaction credential by delegating resources to the payer (SYS-515); the server sets it only when transaction is an accepted credential type and sponsorship is configured and has resources (SYS-510); it does not affect amount, the other credential types or splits; a client that does not know the field ignores it (SYS-110) and pays its own fees.
+- Note: Decision D16 (name and shape). Needs a TRON extension section in the method spec, since it changes the wire format. Release pending decision D19.
+
 
 # 4. Credential schema and client behavior
 
@@ -849,7 +864,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 
 ## SYS-303 source identifies the payer
 - Spec: charge §5.1
-- Level: SHOULD
+- Level: MUST/SHOULD
 - Role: Client
 - Verification: ST
 - Implementer: sdk
@@ -857,7 +872,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-014, SES-066
 - TRON: review
 - Status: open
-- Text: source, when present, is a did:pkh DID carrying the challenge chain and the payer address; for server-submitted types the recovered signer must equal the address in source.
+- Text: source identifies the payer as a did:pkh DID carrying the challenge chain and the payer address; it is required for permit2 (MUST), where it gives the token owner passed to Permit2, and recommended for the other types (SHOULD); for server-submitted types the recovered signer must equal the address in source.
 - Note: Decision D5 -- DID form for TRON (`did:pkh:tron:<chain ref>:<Base58 address>` proposed versus the eip155 form with 20-byte hex).
 
 ## SYS-304 Client validates the challenge before paying
@@ -898,7 +913,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Text: payload is {type:"transaction", signature}; signature is the hex-encoded signed TRON transaction (protobuf raw_data plus signature) containing exactly one TriggerSmartContract with contract_address = currency, call_value 0, no TRC-10 value, and data = transfer(address,uint256) selector a9059cbb with the challenge recipient and amount; the client does not broadcast it.
 - Note: Replaces RLP/EIP-1559 of the EVM draft. Field name `signature` kept for parity with the EVM draft; decision D6 covers the encoding (hex of the protobuf Transaction versus the node JSON form).
 
-## SYS-311 Transaction validity and fees are the client's
+## SYS-311 Transaction validity and fees
 - Spec: charge §5.4, 5.6
 - Level: MUST
 - Role: Client
@@ -908,7 +923,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: -
 - TRON: new
 - Status: open
-- Text: The client signs a fully valid transaction: reference block taken from the network named by chainId, expiration in the future and not later than the challenge expires, a fee_limit that covers the transfer, and Energy/Bandwidth or TRX paid by the payer account; the server never tops it up.
+- Text: The client signs a fully valid transaction: reference block taken from the network named by chainId, expiration in the future and not later than the challenge expires, and a fee_limit that covers the transfer. Without resource sponsorship the payer account pays Energy/Bandwidth or TRX and the server never tops it up; when the challenge offers resourceSponsor (SYS-215) the client may sign without holding the Energy, relying on the delegation of SYS-515.
+- Note: Sponsorship changes only who provides the resources, not the transaction: the signed transfer is the same either way.
 
 ## SYS-312 Hash payload
 - Spec: charge §5.5
@@ -934,7 +950,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - TRON: adapt
 - Status: open
 - Text: The permit2 payload has type, permit {permitted, nonce, deadline}, transferDetails, witness and signature; permitted is always an array (length 1 for a single transfer), each token equals currency, and transferDetails has the same length.
-- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514. The signed message's spender field is methodDetails.spender (SYS-204); the TIP-712 domain is name "Permit2", the chainId and the 20-byte form of permit2Address.
 
 ## SYS-321 Permit2 witness and challengeHash
 - Spec: charge §5.2.3
@@ -946,8 +962,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-017, EVM-018
 - TRON: adapt
 - Status: open
-- Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the witness carries challengeHash and externalId (empty string when the request has none); typed data uses the exact witness type string of the spec and is signed per TIP-712.
-- Note: The type string is garbled in the text rendering of the draft; take it from the canonical source and confirm it against the deployed contract (SYS-514).
+- Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the witness carries challengeHash and externalId (empty string when the request has none); the witness type string passed to Permit2 is exactly `PaymentWitness witness)PaymentWitness(bytes32 challengeHash,string externalId)TokenPermissions(address token,uint256 amount)` (no space after any comma); typed data is signed per TIP-712.
+- Note: The text rendering of the EVM draft shows a space after the comma in "bytes32 challengeHash, string externalId", which TIP-712/EIP-712 type encoding does not allow and which would make every signature fail on-chain; tron-charge §5.2.3 uses the string above (Appendix C, open issue 9). SYS-514 confirms it against the deployed contract.
 
 ## SYS-322 Client checks its Permit2 allowance before signing
 - Spec: project; charge §5.2, 10.3
@@ -1005,8 +1021,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: -
 - TRON: adapt
 - Status: open
-- Text: Before broadcasting the server deserializes the transaction and verifies: the transaction ID equals SHA-256 of raw_data; exactly one contract of type TriggerSmartContract; contract_address equals currency; call_value and TRC-10 value are zero; calldata starts with a9059cbb and decodes to the challenge recipient and amount with no trailing data; the signature is valid for owner_address; expiration has not passed.
-- Note: Pre-broadcast half of EVM-030 (carried by SYS-501). A TRON transaction has no chainId field: the network is bound by the reference block (TAPOS), which the node of the configured chain enforces on broadcast (SYS-504). Multi-signature / account-permission signers are decision D7.
+- Text: Before broadcasting the server deserializes the transaction and verifies: the transaction ID equals SHA-256 of raw_data; exactly one contract of type TriggerSmartContract; contract_address equals currency; call_value and TRC-10 value are zero; calldata starts with a9059cbb and decodes to the challenge recipient and amount with no trailing data; the signature is valid for owner_address; expiration has not passed; the owner account exists on the TRON network (is activated), otherwise the credential is rejected with verification-failed and a detail naming the cause, unless account activation is enabled (SYS-517); for a sponsored payment, the remaining time to expiration covers the sponsored steps of SYS-515.
+- Note: Pre-broadcast half of EVM-030 (carried by SYS-501). A TRON transaction has no chainId field: the network is bound by the reference block (TAPOS), which the node of the configured chain enforces on broadcast (SYS-504). Multi-signature / account-permission signers are decision D7. The account check reads only; activation is a chain write and belongs to settlement (SYS-012, SYS-517). Whether an unactivated account can send a transaction at all is decision D20; resource delegation to it does not work (confirmed by the project owner, 23 Nov 2026).
 
 ## SYS-403 Hash pre-verification
 - Spec: charge §6.4 step 1
@@ -1031,7 +1047,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: EVM-027
 - TRON: adapt
 - Status: open
-- Text: Before submitting: the TIP-712 signature recovers to the source address; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request.
+- Text: Before submitting: source is present and the TIP-712 signature recovers to the source address; the signed spender equals methodDetails.spender and the account the server will submit from; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request.
 - Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
 
 ## SYS-405 Authorization pre-submit verification
@@ -1055,6 +1071,7 @@ Who pays network resources follows from the credential type:
 | Type | Broadcasts | Pays Energy/Bandwidth | Splits | Challenge binding |
 |---|---|---|---|---|
 | transaction | Server | Client | no | weak (terms only) |
+| transaction, resourceSponsor | Server | Server, by delegating to the payer | no | weak (terms only) |
 | hash | Client | Client | no | weak (terms only) |
 | permit2 | Server | Server | yes | challengeHash in witness |
 | authorization | Server | Server | no | challengeHash as nonce |
@@ -1109,6 +1126,38 @@ Hash flow (client broadcasts):
       |<------------------------|                           |
 ```
 
+Sponsored transaction flow (resourceSponsor true, SYS-515):
+
+```
+   SDK Client               SDK Server                 TRON network
+      | (1)-(2) as above,       |                           |
+      |     resourceSponsor     |                           |
+      | (3) build + sign TRC-20 transfer (not broadcast)    |
+      | (4) Authorization:      |                           |
+      |     Payment <cred>      |                           |
+      |------------------------>|                           |
+      |                         | (5a) verify (SYS-401/402),|
+      |                         |      replay check         |
+      |                         | (5b) simulate, estimate   |
+      |                         |      Energy               |
+      |                         |<------------------------->|
+      |                         | (5c) activate payer, only |
+      |                         |      if enabled (SYS-517) |
+      |                         |-------------------------->|
+      |                         | (5d) delegate Energy to   |
+      |                         |      payer, wait inclusion|
+      |                         |-------------------------->|
+      |                         | (5e) broadcast client tx  |
+      |                         |-------------------------->|
+      |                         | (5f) result SUCCESS +     |
+      |                         |      Transfer log + depth |
+      |                         |<--------------------------|
+      | (6) 200 OK + Receipt    |                           |
+      |<------------------------|                           |
+      |                         | (7) reclaim delegation    |
+      |                         |-------------------------->|
+```
+
 Permit2 and authorization flows (server submits and pays):
 
 ```
@@ -1145,6 +1194,7 @@ Permit2 and authorization flows (server submits and pays):
 - TRON: adapt
 - Status: open
 - Text: After SYS-402 passes the server broadcasts the client-signed transaction unchanged to the TRON network, waits for its transaction info, and delivers the resource with a receipt only when SYS-503, SYS-505 and SYS-506 hold; the payer's token balance decreases and the recipient's increases by exactly amount, and the reference in the receipt is that transaction's ID.
+- Note: When the challenge offers resourceSponsor the flow is SYS-515.
 
 ## SYS-502 Hash charge flow
 - Spec: charge §6.4, 7.4
@@ -1220,7 +1270,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: SES-095
 - TRON: new
 - Status: open
-- Text: A transaction that is not yet included may be awaited up to a bounded timeout; if the required confirmation is not reached within the configured timeout the server returns an error without Payment-Receipt and without delivering the resource; a server-broadcast transaction whose expiration has passed without inclusion is treated as definitively failed.
+- Text: A transaction that is not yet included may be awaited up to a bounded timeout; if the required confirmation is not reached within the configured timeout the server returns an error without Payment-Receipt and without delivering the resource; a server-broadcast transaction whose expiration has passed without inclusion is treated as definitively failed; any delegation made for it (SYS-516) is reclaimed.
 - Note: Decision D10 -- response code and whether the client may retry the same credential while the outcome is still unknown.
 
 ## SYS-508 Permit2 charge flow
@@ -1259,7 +1309,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-020, EVM-040
 - TRON: adapt
 - Status: open
-- Text: For permit2 and authorization the server account pays Energy and Bandwidth (staked, delegated or burned TRX) and sets a bounded fee_limit; the server monitors these resources and its TRX balance and stops accepting server-paid credential types (no new challenges offering them) when it cannot cover a settlement.
+- Text: For permit2 and authorization the server account pays Energy and Bandwidth (staked, delegated or burned TRX) and sets a bounded fee_limit; for sponsored transactions (SYS-515) the delegating account provides the delegated Energy and Bandwidth and the server pays the delegate, reclaim and any activation transactions; the server monitors these resources, its TRX balance, the delegation pool and the activation budget, and stops offering server-paid credential types or resourceSponsor (no new challenges offering them) when it cannot cover a settlement.
 
 ## SYS-511 Simulate before server-paid submission
 - Spec: charge §6.1, 6.2, 10.6, 10.7
@@ -1271,7 +1321,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-041
 - TRON: adapt
 - Status: open
-- Text: Before submitting a server-paid transaction the server simulates it with a constant (read-only) contract call and checks the client's token balance; a failing simulation is rejected with verification-failed and nothing is broadcast; attempts are rate limited per client (SYS-806).
+- Text: Before submitting a server-paid transaction, and before any activation or delegation for a sponsored one, the server simulates the transfer with a constant (read-only) contract call and checks the client's token balance; a failing simulation is rejected with verification-failed and nothing is broadcast; for a sponsored payment the simulation is mandatory and its Energy estimate bounds the delegation (SYS-516); attempts are rate limited per client (SYS-806).
+- Note: Level stays SHOULD for permit2 and authorization as in the EVM draft; for sponsored transactions it is a project MUST, because the server hands resources to the payer.
 
 ## SYS-512 Client does not pay twice
 - Spec: base §11.3; project
@@ -1310,6 +1361,58 @@ Permit2 and authorization flows (server submits and pays):
 - Status: open
 - Text: For each network in SYS-014 the domain separator the SDK computes for Permit2 (name, chainId, verifyingContract in 20-byte form) equals the value returned by DOMAIN_SEPARATOR() of the deployed contract; a witness transfer signed by the SDK client with a TRON wallet per TIP-712 is accepted by that contract (both overloads of permitWitnessTransferFrom) and a signature over altered data is rejected.
 - Note: The one remaining technical risk for Permit2 on TRON. The domain-separator half was checked by hand on 22 Nov 2026 and matches on both networks (see SYS-014); the test keeps it as a regression check. A failure here reopens decision D3.
+
+## SYS-515 Sponsored transaction charge flow
+- Spec: project; tron-charge §11.4
+- Level: MUST (project)
+- Role: Both
+- Verification: SIT
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: For a transaction credential under a challenge with resourceSponsor true, the server in order: runs SYS-401 and SYS-402 and the replay check (SYS-710); simulates the transfer (SYS-511); activates the payer account if needed and allowed (SYS-517) and waits for inclusion; delegates Energy, and Bandwidth if needed, to the payer address (SYS-516) and waits for inclusion; broadcasts the client-signed transaction unchanged; then completes as SYS-501 (SYS-503, SYS-505, SYS-506 before the receipt); and finally reclaims the delegation (SYS-516). The payer's TRX balance is unchanged by the payment.
+- Note: Decision D17 (delegation source) and D20 (Nile facts). Release pending decision D19.
+
+## SYS-516 Delegation bounded and always reclaimed
+- Spec: project; tron-charge §11.5
+- Level: MUST (project)
+- Role: Server
+- Verification: SIT
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: The server delegates no more Energy than the simulated estimate plus a configured margin, never above the per-payment cap of SYS-006, and delegates without a lock period; it reclaims (undelegates) the delegation after the payment succeeds, fails or times out, without delaying the receipt; a delegation still outstanding after a server restart is reclaimed on startup.
+- Note: The delegated resources belong to the payer's account until reclaimed and can be spent on any transaction (SYS-518). Release pending decision D19.
+
+## SYS-517 Optional account activation
+- Spec: project; tron-charge §11.6
+- Level: MUST (project)
+- Role: Server
+- Verification: ST/SIT
+- Implementer: sdk
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: Account activation is disabled unless the server configuration enables it explicitly. When enabled, and only for a sponsored payment that has passed every other check including replay (SYS-710) and simulation (SYS-511), the server activates an unactivated payer address with AccountCreateContract with type Normal, reading the account-creation fee from the chain parameters; it does not activate when the payment amount is below the configured minimum or when the activation budget for the period is spent, and then rejects as in SYS-402.
+- Note: Activation cannot be reclaimed; the fee is a permanent cost to the server provider, which is why it is off by default. Decision D18 (activation method). Release pending decision D19.
+
+## SYS-518 Sponsorship abuse limits
+- Spec: project; charge §10.6; tron-charge §11.8
+- Level: MUST/SHOULD (project)
+- Role: Server
+- Verification: ST/SIT
+- Implementer: sdk/app
+- Release: R1
+- Source: -
+- TRON: new
+- Status: open
+- Text: The server bounds what a failed sponsored payment can cost it (MUST): at most one activation fee (SYS-517) plus the delegation of SYS-516 per attempt, attempts serialized per payer address (SYS-712) and rate limited (SYS-806); it should stop sponsoring an address or IP whose sponsored payments repeatedly fail after delegation (SHOULD).
+- Note: Known risk: between delegation and broadcast the payer can spend the delegated Energy on another transaction, for example moving the tokens away so the payment fails. The guards bound the loss; they cannot remove it. Permit2 has no such exposure and stays the preferred server-paid type. Release pending decision D19.
 
 
 # 7. Receipt
@@ -1437,7 +1540,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-053
 - TRON: same
 - Status: open
-- Text: Concurrent requests carrying the same credential result in at most one settlement on the TRON network and one resource delivery; the others are rejected.
+- Text: Concurrent requests carrying the same credential result in at most one settlement on the TRON network and one resource delivery; the others are rejected; sponsored payments (SYS-515) are serialized per payer address, so concurrent credentials never trigger parallel activations or delegations to one account.
 
 ## SYS-713 Permit2 nonce conflicts and contract address
 - Spec: charge §10.5
@@ -1525,7 +1628,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-059
 - TRON: same
 - Status: open
-- Text: Challenge issuance and credential verification attempts are rate limited, per client address and IP for server-paid credential types.
+- Text: Challenge issuance and credential verification attempts are rate limited, per client address and IP for server-paid credential types and for sponsored payments, with account activations (SYS-517) limited separately.
 
 
 # 10. Session: SDK configuration and request schema
@@ -2838,7 +2941,7 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 | ID | Decision | Affects |
 |---|---|---|
 | D1 | Wire format of addresses and hex values: Base58Check addresses (proposed) or 0x hex as in the EVM drafts; 0x prefix on hashes and channelId | SYS-203, SYS-1004 |
-| D2 | RESOLVED 12 Nov 2026: permit2Address is always required; no default, value from SYS-014 | SYS-204 |
+| D2 | RESOLVED 12 Nov 2026, REVISED 23 Nov 2026: permit2Address is required when permit2 is offered (not always), with no default; value from SYS-014. methodDetails.spender added with the same condition | SYS-204, SYS-404 |
 | D3 | RESOLVED 12 Nov 2026: Permit2 is in the first release; deployments in SYS-014 (mainnet TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9, Nile TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs, provisional). TIP-712 domain compatibility is verified by SYS-514, not assumed | SYS-014, SYS-207, SYS-212, SYS-320, SYS-321, SYS-404, SYS-508, SYS-514, SYS-713, SYS-1015, SYS-1122, SYS-1123, SYS-1212 |
 | D4 | Token authorization (EIP-3009 semantics): any target TRC-20 implementing transferWithAuthorization (charge) and receiveWithAuthorization (session), or n/a | SYS-208, SYS-330, SYS-405, SYS-509, SYS-1121, SYS-1123, SYS-1211 |
 | D5 | source DID form for TRON addresses | SYS-303 |
@@ -2852,6 +2955,11 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 | D13 | Target tokens for session: verify transfer behavior of each TRC-20 (return values, fee parameters) | SYS-1016, SYS-1103 |
 | D14 | Reference escrow: who deploys and owns it per network; immutable without admin (proposed) or with pause/upgrade | SYS-1003, SYS-1116 |
 | D15 | Voucher typed-data domain name and version for TRON | SYS-1301 |
+| D16 | Resource sponsorship field: name and shape (boolean resourceSponsor as proposed, or an object with Energy/Bandwidth limits) | SYS-204, SYS-215 |
+| D17 | Delegation source: the server's own staked TRX only, or a pluggable Energy rental provider | SYS-006, SYS-515, SYS-516 |
+| D18 | Account activation method: AccountCreateContract only (proposed), or also a TRX transfer option | SYS-517 |
+| D19 | Release of resource sponsorship and activation: part of R1 (as tagged) or a later phase | SYS-215, SYS-515..SYS-518 |
+| D20 | Facts to confirm on Nile: whether an unactivated account can send any transaction (if not, SYS-402's account check matters for every transaction credential); whether free daily Bandwidth always covers one transfer; accuracy of the Energy estimate for USDT (dynamic energy, recipient with zero balance); whether an immediate reclaim returns the stake at once and how consumed Energy is accounted; current account-creation fee | SYS-402, SYS-515, SYS-516, SYS-517 |
 
 
 # 19. Source map
