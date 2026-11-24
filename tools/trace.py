@@ -30,7 +30,7 @@ TRACKED = "SYS-"   # prefix of the requirements that tests must cover
 def parse_requirements(rdir):
     """Return (all requirements by ID, IDs declared as not carried)."""
     reqs, cur, not_carried = {}, None, set()
-    for path in sorted(rdir.glob("*.md")):
+    for path in sorted(rdir.rglob("*.md")):
         for line in path.read_text(encoding="utf-8").splitlines():
             nc = re.search(r"Not carried:\s*(.*)$", line)
             if nc:
