@@ -408,7 +408,8 @@ Table of Contents
                                   Table 2
 
    Challenge expiry is conveyed by the expires auth-param in WWW-
-   Authenticate per [I-D.httpauth-payment].
+   Authenticate per [I-D.httpauth-payment].  The request MUST NOT carry
+   a separate expiry value.
 
    amount MUST contain only decimal digits, with no sign, decimal point
    or exponent.  Implementations MUST use exact integer arithmetic for
@@ -1279,7 +1280,8 @@ Table of Contents
    5.  nonce matches the expected challengeHash derived from the
        challenge id and realm
 
-   6.  validBefore has not passed
+   6.  The authorization is currently valid: validAfter is before and
+       validBefore is after the current time
 
    7.  The signer has sufficient token balance
 
@@ -1493,9 +1495,11 @@ Table of Contents
    solidity interface.
 
    A server that waits for a transaction it broadcast MUST bound the
-   wait.  If the transaction's expiration passes without inclusion, the
-   transaction can no longer be included and the server MUST treat the
-   payment as failed.
+   wait.  When the transaction's expiration has passed and the server
+   has confirmed that it was not included, the transaction can no
+   longer be included and the server MUST treat the payment as failed.
+   Until then the outcome is unknown and the replay reservations of
+   Section 8 stay in place.
 
 7.6.  Receipt Generation
 
@@ -1534,51 +1538,111 @@ Table of Contents
 
 8.  Replay Protection
 
-   Servers MUST maintain a set of consumed credential identifiers.  The
-   replay prevention token depends on the credential type:
+   Each challenge id MUST be single-use [I-D.payment-intent-charge],
+   and each payment proof MUST be accepted at most once, under any
+   challenge.  Servers therefore track two identifiers per credential:
+   the challenge id, and a proof token that depends on the credential
+   type:
 
    *  *type="permit2"*: The combination of signer address and Permit2
-      nonce serves as the replay token.  The nonce is consumed on-chain
-      by the Permit2 contract.
+      nonce.  The nonce is also consumed on-chain by the Permit2
+      contract.
 
    *  *type="authorization"*: The combination of signer address and
-      authorization nonce serves as the replay token.  The nonce is
-      consumed on-chain by the token contract itself, providing
-      contract-level replay protection.
+      authorization nonce.  The nonce is also consumed on-chain by the
+      token contract itself.
 
-   *  *type="transaction"*: The transaction ID (SHA-256 of raw_data,
-      known before broadcast) serves as the replay token.
-
-   *  *type="hash"*: The normalized transaction ID provided by the
-      client serves as the replay token.
+   *  *type="transaction"* and *type="hash"*: The normalized
+      transaction ID (SHA-256 of raw_data).  Both types use the same
+      key, so that a transaction the server broadcast for a
+      type="transaction" credential cannot later be presented again as
+      type="hash".
 
    Transaction IDs MUST be normalized (lowercase hex, no prefix) before
    they are checked or stored, so that one transaction cannot be
    presented twice in different spellings.
 
-   Before accepting a credential, the server MUST check whether its
-   replay token has already been consumed.  After successful
-   verification, the server MUST atomically mark it as consumed, so
-   that concurrent requests carrying the same credential cause at most
-   one settlement and one resource delivery.  The consumed set SHOULD
-   be shared by all server instances and survive restarts; entries for
-   type="hash" SHOULD be kept without expiry, because a transaction ID
-   stays valid on-chain forever.
+   Before any settlement side effect (submission, broadcast, resource
+   delegation or account activation), and before accepting a
+   transaction the client broadcast, the server MUST atomically reserve
+   both identifiers.  A credential whose challenge id or proof token is
+   already reserved or consumed MUST be rejected (Section 9).
+
+   After verified settlement, the server MUST atomically record both
+   identifiers as consumed before delivering the resource.  A definitive
+   failure before payment releases the reservation.  While the outcome
+   of a settlement is unknown, for example after a timeout, both
+   identifiers MUST stay reserved until the server has determined the
+   outcome (Section 7.5).
+
+   Concurrent requests that share either identifier MUST result in at
+   most one settlement and one resource delivery.  Reservations and
+   consumed entries MUST be shared by all server instances and MUST
+   survive restarts, so that a pending settlement can be reconciled by
+   its transaction ID.  A consumed challenge id MAY be removed once the
+   challenge can no longer be presented as valid.  Consumed transaction
+   IDs SHOULD be kept without expiry, because a transaction ID stays
+   valid on-chain forever.
 
 9.  Error Responses
 
-   When rejecting a credential, the server MUST return HTTP 402 (Payment
-   Required) with a fresh WWW-Authenticate: Payment challenge per
-   [I-D.httpauth-payment].  The server SHOULD include a response body
-   conforming to Problem Details [RFC9457] with Content-Type:
-   application/problem+json.
+   Servers MUST use the problem types defined in
+   [I-D.httpauth-payment] and SHOULD include a response body conforming
+   to Problem Details [RFC9457] with Content-Type:
+   application/problem+json.  The detail field SHOULD contain a human-
+   readable description of the specific failure, for example that the
+   execution result was REVERT or that the payer account is not
+   activated.  Error details MUST NOT be placed in WWW-Authenticate
+   parameters, and no error response includes a Payment-Receipt
+   header (Section 7.6).
 
-   Servers MUST use the standard problem types defined in
-   [I-D.httpauth-payment]: malformed-credential, invalid-challenge,
-   payment-expired and verification-failed.  The detail field SHOULD
-   contain a human-readable description of the specific failure, for
-   example that the execution result was REVERT or that the payer
-   account is not activated.
+   Every 402 response MUST carry a fresh WWW-Authenticate: Payment
+   challenge per [I-D.httpauth-payment].  For this method, servers
+   classify failures as follows:
+
+   +=================================+========+========================+
+   | Condition                       | Status | Problem type           |
+   +=================================+========+========================+
+   | Credential is not               | 402    | malformed-credential   |
+   | base64url-encoded JSON, or      |        |                        |
+   | challenge or payload is missing |        |                        |
+   | or not an object                |        |                        |
+   +---------------------------------+--------+------------------------+
+   | payload.type is missing or not  | 402    | invalid-payload        |
+   | accepted for the challenge, or  |        |                        |
+   | the payload does not match the  |        |                        |
+   | schema of its type              |        |                        |
+   +---------------------------------+--------+------------------------+
+   | Challenge id unknown, echoed    | 402    | invalid-challenge      |
+   | parameters altered, or          |        |                        |
+   | challenge already reserved or   |        |                        |
+   | consumed                        |        |                        |
+   +---------------------------------+--------+------------------------+
+   | Challenge expired, Permit2      | 402    | payment-expired        |
+   | deadline passed, or             |        |                        |
+   | authorization validity window   |        |                        |
+   | not open                        |        |                        |
+   +---------------------------------+--------+------------------------+
+   | Otherwise valid payment below   | 402    | payment-insufficient   |
+   | the requested amount            |        |                        |
+   +---------------------------------+--------+------------------------+
+   | Invalid signature, transfer     | 402    | verification-failed    |
+   | mismatch, proof token already   |        |                        |
+   | used, broadcast rejected by the |        |                        |
+   | node, execution result not      |        |                        |
+   | SUCCESS, or payer account not   |        |                        |
+   | activated                       |        |                        |
+   +---------------------------------+--------+------------------------+
+   | Payment method not accepted     | 400    | method-unsupported     |
+   +---------------------------------+--------+------------------------+
+   | Unexpected internal             | 500    | internal-payment-error |
+   | payment-processing failure      |        |                        |
+   +---------------------------------+--------+------------------------+
+
+                                 Table 17
+
+   Other problem types of [I-D.httpauth-payment], such as bad-request
+   and payment-action-required, apply as defined there.
 
    A transaction that is included but whose execution result is not
    SUCCESS is a verification failure, not a pending state.
@@ -1635,7 +1699,9 @@ Table of Contents
    Clients SHOULD present each split recipient and amount to the user
    and SHOULD make payments automatically only within an explicit
    policy, such as a maximum amount per payment and a list of allowed
-   tokens and networks.
+   tokens and networks.  Clients MUST NOT pay automatically when the
+   recipient or any split recipient is neither expected by the
+   application for the resource nor explicitly confirmed by the user.
 
 10.4.  Hash Credential Binding
 
@@ -1987,7 +2053,7 @@ Table of Contents
        |                   | the TRON network          | document  |
        +-------------------+---------------------------+-----------+
 
-                                 Table 17
+                                 Table 18
 
    Contact: TRON MPP Taskforce, TRON DAO (dev@trondao.com)
 
@@ -2004,7 +2070,7 @@ Table of Contents
       |        |            | transfer on TRON          | document  |
       +--------+------------+---------------------------+-----------+
 
-                                 Table 18
+                                 Table 19
 
 13.  References
 
@@ -2042,15 +2108,18 @@ Table of Contents
               <https://www.rfc-editor.org/info/rfc9457>.
 
    [I-D.payment-intent-charge]
-              Moxey, J., Ryan, B., and T. Meagher, "'charge' Intent for
-              HTTP Payment Authentication", 2026,
-              <https://datatracker.ietf.org/doc/draft-payment-intent-
-              charge/>.
+              Moxey, J., Ryan, B., and T. Meagher, "Charge Intent for
+              HTTP Payment Authentication", Work in Progress,
+              Internet-Draft, draft-payment-intent-charge-00,
+              24 November 2026, <https://paymentauth.org/
+              draft-payment-intent-charge-00.txt>.
 
    [I-D.httpauth-payment]
-              Moxey, J., "The 'Payment' HTTP Authentication Scheme",
-              January 2026, <https://datatracker.ietf.org/doc/draft-
-              ryan-httpauth-payment/>.
+              Ryan, B., Moxey, J., Meagher, T., Weinstein, J., and S.
+              Kaliski, "The 'Payment' HTTP Authentication Scheme", Work
+              in Progress, Internet-Draft, draft-httpauth-payment-01,
+              24 November 2026, <https://paymentauth.org/
+              draft-httpauth-payment-01.txt>.
 
    [TIP-712]  TRON Improvement Proposals, "TIP-712: TRON Typed
               Structured Data Hashing and Signing",
@@ -2068,9 +2137,11 @@ Table of Contents
 13.2.  Informative References
 
    [I-D.evm-charge]
-              "EVM Charge Intent for HTTP Payment Authentication",
-              Work in Progress, Internet-Draft, draft-evm-charge-00,
-              2 November 2026.
+              DiNovi, B., Swenberg, C., and K. Scott, "EVM Charge
+              Intent for HTTP Payment Authentication", Work in
+              Progress, Internet-Draft, draft-evm-charge-00,
+              24 November 2026, <https://paymentauth.org/
+              draft-evm-charge-00.txt>.
 
    [EIP-712]  Bloemen, R., "Typed structured data hashing and signing",
               September 2017, <https://eips.ethereum.org/EIPS/eip-712>.
