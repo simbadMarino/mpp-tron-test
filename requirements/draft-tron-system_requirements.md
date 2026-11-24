@@ -684,7 +684,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - TRON: review
 - Status: open
 - Text: Addresses in currency, recipient and splits[].recipient are TRON Base58Check addresses (34 characters, 0x41 version byte); the checksum is validated and invalid addresses are rejected; comparison is always by the decoded 20-byte value, never by string form.
-- Note: Decision D1 -- the EVM draft uses 0x 20-byte hex. Base58Check is proposed for the wire; the SDK may accept 41-prefixed hex in configuration and normalize. Inside TIP-712 typed data and ABI calldata the 20-byte form is used.
+- Note: Decision D1 (resolved 23 Nov 2026): Base58Check is the wire form for every address in challenges, credentials and receipts. The SDK may accept 41-prefixed hex in configuration and normalize it. Inside TIP-712 typed data and ABI calldata the 20-byte form is used.
 
 ## SYS-204 methodDetails and chainId
 - Spec: charge §4.2, 4.2.1; sdk (Gotchas)
@@ -865,15 +865,15 @@ Decoded `request` for the tron method (addresses per SYS-203):
 ## SYS-303 source identifies the payer
 - Spec: charge §5.1
 - Level: MUST/SHOULD
-- Role: Client
+- Role: Both
 - Verification: ST
 - Implementer: sdk
 - Release: R1
 - Source: EVM-014, SES-066
 - TRON: review
 - Status: open
-- Text: source identifies the payer as a did:pkh DID carrying the challenge chain and the payer address; it is required for permit2 (MUST), where it gives the token owner passed to Permit2, and recommended for the other types (SHOULD); for server-submitted types the recovered signer must equal the address in source.
-- Note: Decision D5 -- DID form for TRON (`did:pkh:tron:<chain ref>:<Base58 address>` proposed versus the eip155 form with 20-byte hex).
+- Text: source identifies the payer as a DID of the form `did:pkh:tron:<chain ref>:<Base58 address>`, where the chain reference is the challenge chainId in decimal, following the CAIP-2 form for TRON (for example `did:pkh:tron:728126428:T...` on mainnet, `did:pkh:tron:3448148188:T...` on Nile); the client emits only the decimal form, and the server accepts the deprecated 0x-hex chain reference (for example `did:pkh:tron:0x2b6653dc:T...`) and normalizes it to decimal before comparing; it is required for permit2 (MUST), where it gives the token owner passed to Permit2, and recommended for the other types (SHOULD); for server-submitted types the recovered signer must equal the address in source.
+- Note: Decision D5 (resolved 23 Nov 2026, chain reference revised to decimal the same day): the tron namespace with a Base58Check address; the eip155 form is not used. The decimal chain reference follows the CAIP-2 tron namespace (ChainAgnostic/namespaces tron/caip2.md, merged through PR 170), which makes decimal canonical and treats the 0x hex form as a deprecated alias. The server compares the decoded 20-byte address, not the string (SYS-203), and rejects a source whose normalized chain reference differs from the challenge chainId. Accepting the hex alias on input follows the namespace spec's backwards-compatibility rule (decided 23 Nov 2026).
 
 ## SYS-304 Client validates the challenge before paying
 - Spec: base §7.4, 11.6; charge §10.3
@@ -911,7 +911,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - TRON: adapt
 - Status: open
 - Text: payload is {type:"transaction", signature}; signature is the hex-encoded signed TRON transaction (protobuf raw_data plus signature) containing exactly one TriggerSmartContract with contract_address = currency, call_value 0, no TRC-10 value, and data = transfer(address,uint256) selector a9059cbb with the challenge recipient and amount; the client does not broadcast it.
-- Note: Replaces RLP/EIP-1559 of the EVM draft. Field name `signature` kept for parity with the EVM draft; decision D6 covers the encoding (hex of the protobuf Transaction versus the node JSON form).
+- Note: Decision D6 (resolved 23 Nov 2026): hex of the protobuf-serialized Transaction, the form a node's broadcasthex interface accepts; the node JSON form is not accepted. The server broadcasts through the TRON node HTTP or gRPC API; TRON's JSON-RPC interface is read-only and is not used to submit.
 
 ## SYS-311 Transaction validity and fees
 - Spec: charge §5.4, 5.6
@@ -925,6 +925,19 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Status: open
 - Text: The client signs a fully valid transaction: reference block taken from the network named by chainId, expiration in the future and not later than the challenge expires, and a fee_limit that covers the transfer. Without resource sponsorship the payer account pays Energy/Bandwidth or TRX and the server never tops it up; when the challenge offers resourceSponsor (SYS-215) the client may sign without holding the Energy, relying on the delegation of SYS-515.
 - Note: Sponsorship changes only who provides the resources, not the transaction: the signed transfer is the same either way.
+
+## SYS-313 Client sends an application-signed transaction
+- Spec: project; charge §5.4
+- Level: MUST (project)
+- Role: Client
+- Verification: ST/SIT
+- Implementer: sdk
+- Release: R2
+- Source: -
+- TRON: new
+- Status: open
+- Text: The client SDK accepts a transaction already signed by the application, for example under an active permission or with several signatures, and sends it as a transaction credential without adding or changing signatures; before sending it checks the same terms it would apply to a transaction it built itself (SYS-310, SYS-311: currency, recipient, amount, reference block network, expiration not later than the challenge expires) and refuses a transaction that does not match.
+- Note: Decision D7 (resolved 23 Nov 2026): collecting signatures is the application's job (wallet, custody service, co-signer); the SDK does not provide a signature-collection helper. Accepted limit: the transaction must be fully signed before the challenge expires, which in practice limits multi-signature payments to automated signers; the SDK offers no longer-lived challenge for this case. A multi-signature account cannot use permit2 or authorization (SYS-404, SYS-405) and pays with transaction or hash.
 
 ## SYS-312 Hash payload
 - Spec: charge §5.5
@@ -1021,8 +1034,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: -
 - TRON: adapt
 - Status: open
-- Text: Before broadcasting the server deserializes the transaction and verifies: the transaction ID equals SHA-256 of raw_data; exactly one contract of type TriggerSmartContract; contract_address equals currency; call_value and TRC-10 value are zero; calldata starts with a9059cbb and decodes to the challenge recipient and amount with no trailing data; the signature is valid for owner_address; expiration has not passed; the owner account exists on the TRON network (is activated), otherwise the credential is rejected with verification-failed and a detail naming the cause, unless account activation is enabled (SYS-517); for a sponsored payment, the remaining time to expiration covers the sponsored steps of SYS-515.
-- Note: Pre-broadcast half of EVM-030 (carried by SYS-501). A TRON transaction has no chainId field: the network is bound by the reference block (TAPOS), which the node of the configured chain enforces on broadcast (SYS-504). Multi-signature / account-permission signers are decision D7. The account check reads only; activation is a chain write and belongs to settlement (SYS-012, SYS-517). Whether an unactivated account can send a transaction at all is decision D20; resource delegation to it does not work (confirmed by the project owner, 23 Nov 2026).
+- Text: Before broadcasting the server deserializes the transaction and verifies: the transaction ID equals SHA-256 of raw_data; exactly one contract of type TriggerSmartContract; contract_address equals currency; call_value and TRC-10 value are zero; calldata starts with a9059cbb and decodes to the challenge recipient and amount with no trailing data; the signatures satisfy the permission of the owner_address account named by the contract's Permission_id (0 for owner, 2 or higher for an active permission), read from the TRON network: each signature recovers, over the transaction ID, to a different key of that permission, the weights of those keys reach the permission's threshold, and an active permission's operations allow TriggerSmartContract; expiration has not passed; the owner account exists on the TRON network (is activated), otherwise the credential is rejected with verification-failed and a detail naming the cause, unless account activation is enabled (SYS-517); for a sponsored payment, the remaining time to expiration covers the sponsored steps of SYS-515.
+- Note: Pre-broadcast half of EVM-030 (carried by SYS-501). A TRON transaction has no chainId field: the network is bound by the reference block (TAPOS), which the node of the configured chain enforces on broadcast (SYS-504). Decision D7 (resolved 23 Nov 2026): the server checks signatures against the account's actual permission in R1, so single-signature and multi-signature transactions follow one procedure. Recovering to owner_address is not enough: a key removed from the account's permissions still recovers to the address, the node would reject the transaction at broadcast, and for a sponsored payment the server would already have delegated (SYS-515). An unmodified account has its own key with weight 1 and threshold 1, so one signature suffices. The account check reads only; activation is a chain write and belongs to settlement (SYS-012, SYS-517). An unactivated account cannot transfer a TRC-20 token and resource delegation to it does not work (decision D20, confirmed by the project owner 23 Nov 2026), so the check applies to every transaction credential, sponsored or not.
 
 ## SYS-403 Hash pre-verification
 - Spec: charge §6.4 step 1
@@ -1035,7 +1048,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - TRON: adapt
 - Status: open
 - Text: payload.hash is exactly 32 bytes of hex; the normalized transaction ID is looked up in the consumed set and rejected if present, before any node query result is accepted.
-- Note: First step of EVM-031 (carried by SYS-502).
+- Note: First step of EVM-031 (carried by SYS-502). Accounts with changed or multi-signature permissions can already pay with hash: the node enforced their permissions on broadcast, and the server only reads the result (decision D7).
 
 ## SYS-404 Permit2 pre-submit verification
 - Spec: charge §6.1
@@ -1047,8 +1060,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: EVM-027
 - TRON: adapt
 - Status: open
-- Text: Before submitting: source is present and the TIP-712 signature recovers to the source address; the signed spender equals methodDetails.spender and the account the server will submit from; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request.
-- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514.
+- Text: Before submitting: source is present and the TIP-712 signature recovers to the source address; the signed spender equals methodDetails.spender and the account the server will submit from; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request; the source account's permissions still authorize its own key: the key that derives to the source address alone meets the threshold of the owner permission, or of an active permission whose operations allow TriggerSmartContract (read from the TRON network); otherwise the credential is rejected with verification-failed and a detail saying the account's permissions no longer authorize the signing key.
+- Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514. Permission check (added 23 Nov 2026): Permit2 verifies the signature with ecrecover, which knows nothing about TRON account permissions, so the address's original key can still sign permit2 transfers after the owner permission was changed to other keys (key rotation after a compromise, or multi-signature) for every token with an outstanding approval to Permit2. The check stops the SDK from being the path for such a transfer; it cannot protect the account against direct calls to Permit2, for which the only remedy is revoking the approval (charge §10.5). Decision D7 (confirmed 23 Nov 2026): multi-signature accounts cannot use permit2 and pay with transaction or hash. An unmodified account has its own key with weight 1 and threshold 1 in the owner permission, so it always passes. Multi-signature transactions themselves are decision D7.
 
 ## SYS-405 Authorization pre-submit verification
 - Spec: charge §6.2 steps 1-7
@@ -1060,8 +1073,8 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: -
 - TRON: review
 - Status: open
-- Text: Before submitting: the token implements transferWithAuthorization; the signature recovers to from; to, value and nonce match recipient, amount and challengeHash; validBefore has not passed; the signer's token balance is sufficient.
-- Note: Pre-submit half of EVM-029 (carried by SYS-509). Decision D4.
+- Text: Before submitting: the token implements transferWithAuthorization; the signature recovers to from; to, value and nonce match recipient, amount and challengeHash; validBefore has not passed; the signer's token balance is sufficient; the account permissions of from still authorize its own key, as in SYS-404 (the key that derives to from alone meets the threshold of the owner permission, or of an active permission whose operations allow TriggerSmartContract); otherwise the credential is rejected with verification-failed and a detail saying the account's permissions no longer authorize the signing key.
+- Note: Pre-submit half of EVM-029 (carried by SYS-509). Decision D4. Permission check (added 23 Nov 2026): the token contract verifies the authorization with ecrecover, which ignores account permissions, so the same gap as in SYS-404 applies; unlike Permit2, no approval is needed, so a removed key can sign authorizations for the whole balance of any token that implements transferWithAuthorization. Decision D7 (confirmed 23 Nov 2026): multi-signature accounts cannot use authorization.
 
 
 # 6. Charge flows: settlement on the TRON network
@@ -1257,8 +1270,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-032, SES-141
 - TRON: review
 - Status: open
-- Text: The server returns Payment-Receipt only after the transaction is included in at least one block with a successful result (MUST); confirmation depth beyond that is a configurable server policy that includes a "solidified block" option; the server assumes no fixed confirmation latency (SHOULD).
-- Note: Decision D9 -- default policy: first block (seconds) versus solidified (about a minute).
+- Text: The server returns Payment-Receipt only after the transaction is included in at least one block with a successful result (MUST); by default it returns the receipt at the first such block, and the server configuration can instead require the block to be solidified (MUST); the server assumes no fixed confirmation latency (SHOULD).
+- Note: Decision D9 (resolved 23 Nov 2026): default is the first block with a successful result (seconds); solidified (about a minute) is the configurable stricter option. For session it applies to every open and top-up.
 
 ## SYS-507 Confirmation timeout
 - Spec: charge §7.5; project
@@ -1321,8 +1334,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-041
 - TRON: adapt
 - Status: open
-- Text: Before submitting a server-paid transaction, and before any activation or delegation for a sponsored one, the server simulates the transfer with a constant (read-only) contract call and checks the client's token balance; a failing simulation is rejected with verification-failed and nothing is broadcast; for a sponsored payment the simulation is mandatory and its Energy estimate bounds the delegation (SYS-516); attempts are rate limited per client (SYS-806).
-- Note: Level stays SHOULD for permit2 and authorization as in the EVM draft; for sponsored transactions it is a project MUST, because the server hands resources to the payer.
+- Text: Before submitting a server-paid transaction, and before any activation or delegation for a sponsored one, the server simulates the transfer with a constant (read-only) contract call and checks the client's token balance; a failing simulation is rejected with verification-failed and nothing is broadcast; for a sponsored payment the simulation is mandatory, its Energy estimate bounds the delegation (SYS-516), and the server also reads the payer's available Bandwidth (free daily allowance plus staked or delegated Bandwidth) and delegates Bandwidth when it does not cover the transaction size; attempts are rate limited per client (SYS-806).
+- Note: Level stays SHOULD for permit2 and authorization as in the EVM draft; for sponsored transactions it is a project MUST, because the server hands resources to the payer. Decision D20 (resolved 23 Nov 2026): the Energy of a TRC-20 transfer depends on whether the recipient already holds the token; a constant call (triggerConstantContract) returns the Energy for the actual recipient, so the estimate needs no separate rule. The free daily Bandwidth covers up to two TRC-20 transfers, but the payer may already have used it.
 
 ## SYS-512 Client does not pay twice
 - Spec: base §11.3; project
@@ -1373,7 +1386,7 @@ Permit2 and authorization flows (server submits and pays):
 - TRON: new
 - Status: open
 - Text: For a transaction credential under a challenge with resourceSponsor true, the server in order: runs SYS-401 and SYS-402 and the replay check (SYS-710); simulates the transfer (SYS-511); activates the payer account if needed and allowed (SYS-517) and waits for inclusion; delegates Energy, and Bandwidth if needed, to the payer address (SYS-516) and waits for inclusion; broadcasts the client-signed transaction unchanged; then completes as SYS-501 (SYS-503, SYS-505, SYS-506 before the receipt); and finally reclaims the delegation (SYS-516). The payer's TRX balance is unchanged by the payment.
-- Note: Decision D17 (delegation source) and D20 (Nile facts). Release pending decision D19.
+- Note: Decision D17 (delegation source). Facts behind the flow are decision D20 (resolved). Release pending decision D19.
 
 ## SYS-516 Delegation bounded and always reclaimed
 - Spec: project; tron-charge §11.5
@@ -1386,7 +1399,7 @@ Permit2 and authorization flows (server submits and pays):
 - TRON: new
 - Status: open
 - Text: The server delegates no more Energy than the simulated estimate plus a configured margin, never above the per-payment cap of SYS-006, and delegates without a lock period; it reclaims (undelegates) the delegation after the payment succeeds, fails or times out, without delaying the receipt; a delegation still outstanding after a server restart is reclaimed on startup.
-- Note: The delegated resources belong to the payer's account until reclaimed and can be spent on any transaction (SYS-518). Release pending decision D19.
+- Note: The delegated resources belong to the payer's account until reclaimed and can be spent on any transaction (SYS-518). Decision D20 (resolved 23 Nov 2026): reclaiming returns the staked TRX at once, but the Energy the payer consumed comes back to the server's account as used Energy and recovers fully only over 24 hours, so the server's daily sponsorship capacity is bounded by its stake (see SYS-510 for when the server stops offering sponsorship). Release pending decision D19.
 
 ## SYS-517 Optional account activation
 - Spec: project; tron-charge §11.6
@@ -1399,7 +1412,7 @@ Permit2 and authorization flows (server submits and pays):
 - TRON: new
 - Status: open
 - Text: Account activation is disabled unless the server configuration enables it explicitly. When enabled, and only for a sponsored payment that has passed every other check including replay (SYS-710) and simulation (SYS-511), the server activates an unactivated payer address with AccountCreateContract with type Normal, reading the account-creation fee from the chain parameters; it does not activate when the payment amount is below the configured minimum or when the activation budget for the period is spent, and then rejects as in SYS-402.
-- Note: Activation cannot be reclaimed; the fee is a permanent cost to the server provider, which is why it is off by default. Decision D18 (activation method). Release pending decision D19.
+- Note: Activation cannot be reclaimed; the fee is a permanent cost to the server provider, which is why it is off by default. The account-creation fee is 1 TRX at 23 Nov 2026 (decision D20); it is still read from the chain parameters because the network can change it. Decision D18 (activation method). Release pending decision D19.
 
 ## SYS-518 Sponsorship abuse limits
 - Spec: project; charge §10.6; tron-charge §11.8
@@ -1672,7 +1685,7 @@ applicability" apply as well and are not repeated.
 - TRON: review
 - Status: open
 - Text: The SDK ships the known escrow address per supported network; the client refuses to deposit into an escrowContract that is not on its allowlist unless the application opted in explicitly, and the server uses the shipped address unless configured otherwise.
-- Note: Decision D14 -- who deploys and owns the reference escrow on Nile and mainnet.
+- Note: Decision D14 (resolved 23 Nov 2026): the TRON method SDK team deploys the reference escrow on each supported network and publishes the addresses; the contract has no owner (SYS-1116).
 
 ## SYS-1004 Encoding conventions
 - Spec: session §6.1, 6.2, 6.3
@@ -1685,7 +1698,7 @@ applicability" apply as well and are not repeated.
 - TRON: review
 - Status: open
 - Text: channelId, signatures and hashes are lowercase hex without padding or truncation; integer values (amounts, deposits, signed-data timestamps) are decimal strings; HTTP and receipt timestamps are RFC 3339 while timestamps inside signed data are Unix seconds.
-- Note: Decision D1 -- the draft also mandates the 0x prefix and hex addresses; TRON shows transaction IDs without 0x and addresses as Base58Check. One wire form must be chosen for both intents (addresses: SYS-203).
+- Note: Decision D1 -- addresses are Base58Check in both intents (resolved, SYS-203), unlike the hex addresses of the session draft. Still open: the 0x prefix on channelId and hashes; TRON shows transaction IDs without 0x.
 
 ## SYS-1005 Signatures are 65 bytes
 - Spec: session §6.1
@@ -2005,7 +2018,7 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 
 ## SYS-1116 No privileged role
 - Spec: project
-- Level: SHOULD (project)
+- Level: MUST (project)
 - Role: Contract
 - Verification: CT
 - Implementer: contract
@@ -2014,7 +2027,7 @@ relies on them. Core functions are mandatory; the relayed profile (SYS-1120..112
 - TRON: review
 - Status: open
 - Text: The reference escrow has no owner or admin function and is deployed without an upgrade proxy; a corrected version is a new deployment at a new address.
-- Note: Decision D14 -- an immutable contract cannot be paused if a defect is found; a pause or upgrade switch brings back a privileged key.
+- Note: Decision D14 (resolved 23 Nov 2026): immutable without admin. Accepted trade-off: an immutable contract cannot be paused if a defect is found; the fix is a new deployment and an updated allowlist (SYS-1003).
 
 ## SYS-1120 Relayed profile is optional
 - Spec: session §7.3, 9.3, 9.4
@@ -2940,26 +2953,26 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 
 | ID | Decision | Affects |
 |---|---|---|
-| D1 | Wire format of addresses and hex values: Base58Check addresses (proposed) or 0x hex as in the EVM drafts; 0x prefix on hashes and channelId | SYS-203, SYS-1004 |
+| D1 | PARTLY RESOLVED 23 Nov 2026: addresses use TRON Base58Check on the wire in both intents (SYS-203). Still open: the 0x prefix on hashes and channelId (SYS-1004) | SYS-203, SYS-1004 |
 | D2 | RESOLVED 12 Nov 2026, REVISED 23 Nov 2026: permit2Address is required when permit2 is offered (not always), with no default; value from SYS-014. methodDetails.spender added with the same condition | SYS-204, SYS-404 |
 | D3 | RESOLVED 12 Nov 2026: Permit2 is in the first release; deployments in SYS-014 (mainnet TTJxU3P8rHycAyFY4kVtGNfmnMH4ezcuM9, Nile TEetQ5ohtKF5eAF9ec6jbvdTzcLDsB6jTs, provisional). TIP-712 domain compatibility is verified by SYS-514, not assumed | SYS-014, SYS-207, SYS-212, SYS-320, SYS-321, SYS-404, SYS-508, SYS-514, SYS-713, SYS-1015, SYS-1122, SYS-1123, SYS-1212 |
 | D4 | Token authorization (EIP-3009 semantics): any target TRC-20 implementing transferWithAuthorization (charge) and receiveWithAuthorization (session), or n/a | SYS-208, SYS-330, SYS-405, SYS-509, SYS-1121, SYS-1123, SYS-1211 |
-| D5 | source DID form for TRON addresses | SYS-303 |
-| D6 | Encoding of the signed transaction in payload.signature | SYS-310 |
-| D7 | Accept transactions signed under account permissions / multi-signature | SYS-402 |
+| D5 | RESOLVED 23 Nov 2026: source is `did:pkh:tron:<chain ref>:<Base58 address>`, chain reference = chainId in decimal (CAIP-2), revised 23 Nov 2026 from 0x hex; servers accept the hex form as a deprecated alias and normalize it | SYS-303 |
+| D6 | RESOLVED 23 Nov 2026: payload.signature is the hex of the protobuf-serialized Transaction (broadcasthex form). No RLP, no Ethereum JSON-RPC submission (TRON JSON-RPC is read-only) | SYS-310 |
+| D7 | RESOLVED 23 Nov 2026: the server verifies transaction signatures against the account's actual permission (Permission_id, distinct keys, weights, threshold, operations) in R1 (SYS-402). Client side (R2): the application collects signatures and the SDK sends the pre-signed transaction (SYS-313); no SDK collection helper. Accepted limit: signing must finish before the challenge expires. permit2 and authorization stay unavailable to multi-signature accounts (SYS-404, SYS-405); hash already works (SYS-403) | SYS-402, SYS-403, SYS-404, SYS-405, SYS-313 |
 | D8 | Duplicate-transaction answer from the node on broadcast | SYS-504 |
-| D9 | Default confirmation policy: first block or solidified (for session it delays every open and top-up) | SYS-506 |
+| D9 | RESOLVED 23 Nov 2026: default is the first block with a successful result; the server can be configured to require a solidified block | SYS-506 |
 | D10 | Behavior while a settlement outcome is unknown (timeout) | SYS-507, SYS-512 |
 | D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt. PARTLY RESOLVED 22 Nov 2026: the Permit2 domain separators on mainnet and Nile are built with chainId 728126428 and 3448148188, so block.chainid on the TVM returns these values and TIP-712 domains use them (SYS-014). Still to confirm for the escrow and voucher domain by component test | SYS-514, SYS-1006, SYS-1102, SYS-1301 |
 | D12 | RESOLVED 12 Nov 2026: server-paid session funding (feePayer true) uses Permit2; the authorization variants depend on D4 | SYS-1012, SYS-1014, SYS-1120, SYS-1210, SYS-1213, SYS-1214, SYS-1405, SYS-1407, SYS-1408, SYS-1507 |
 | D13 | Target tokens for session: verify transfer behavior of each TRC-20 (return values, fee parameters) | SYS-1016, SYS-1103 |
-| D14 | Reference escrow: who deploys and owns it per network; immutable without admin (proposed) or with pause/upgrade | SYS-1003, SYS-1116 |
+| D14 | RESOLVED 23 Nov 2026: the TRON method SDK team deploys the reference escrow on each supported network; immutable, no admin, no upgrade proxy | SYS-1003, SYS-1116 |
 | D15 | Voucher typed-data domain name and version for TRON | SYS-1301 |
 | D16 | Resource sponsorship field: name and shape (boolean resourceSponsor as proposed, or an object with Energy/Bandwidth limits) | SYS-204, SYS-215 |
 | D17 | Delegation source: the server's own staked TRX only, or a pluggable Energy rental provider | SYS-006, SYS-515, SYS-516 |
 | D18 | Account activation method: AccountCreateContract only (proposed), or also a TRX transfer option | SYS-517 |
 | D19 | Release of resource sponsorship and activation: part of R1 (as tagged) or a later phase | SYS-215, SYS-515..SYS-518 |
-| D20 | Facts to confirm on Nile: whether an unactivated account can send any transaction (if not, SYS-402's account check matters for every transaction credential); whether free daily Bandwidth always covers one transfer; accuracy of the Energy estimate for USDT (dynamic energy, recipient with zero balance); whether an immediate reclaim returns the stake at once and how consumed Energy is accounted; current account-creation fee | SYS-402, SYS-515, SYS-516, SYS-517 |
+| D20 | RESOLVED 23 Nov 2026 (project owner): an unactivated account cannot transfer a TRC-20 token, so SYS-402's account check applies to every transaction credential; free daily Bandwidth covers up to two TRC-20 transfers but may already be used, so simulation checks the payer's Bandwidth; transfer Energy depends on whether the recipient holds the token and triggerConstantContract returns it; reclaim returns the stake at once, consumed Energy recovers over 24 hours; account-creation fee is 1 TRX | SYS-402, SYS-511, SYS-515, SYS-516, SYS-517 |
 
 
 # 19. Source map
