@@ -7,10 +7,17 @@ Scope: the "charge" and "session" intents of the "tron" payment method, implemen
 Charge = one-time transfer per request. Session = escrow payment channel with off-chain cumulative vouchers.
 
 Baseline
-- base   = `draft-httpauth-payment-01` (9 Sep 2026, expires 13 Mar 2027) -> `base-httpauth-payment.md` (BASE-xxx)
-- charge = `draft-evm-charge-00` (2 Nov 2026, expires 6 May 2027) -> `evm-charge.md` (EVM-xxx); the TRON method
-  spec `draft-tron-charge.txt` ("tron-charge", 23 Nov 2026) keeps its sections 1-10; it adds section 11 (resource
-  sponsorship, TRON extension), so IANA and References are sections 12-13 there
+
+The following SHA-256 digests identify the exact plain-text drafts reviewed on 24 November 2026. All three carry that publication date and expire on 28 May 2027.
+
+| Spec key | Published text | SHA-256 |
+|---|---|---|
+| base | [draft-httpauth-payment-01](https://paymentauth.org/draft-httpauth-payment-01.txt) | `bd19104ef4a4fe40e028c20d0c51170e0470cf14e3102a0e526b0bc287a81827` |
+| charge | [draft-evm-charge-00](https://paymentauth.org/draft-evm-charge-00.txt) | `35794b26edbb2420e52e58b4d03063ab356e02bb909af0fc885d125b4ea5b351` |
+| intent-charge | [draft-payment-intent-charge-00](https://paymentauth.org/draft-payment-intent-charge-00.txt), inherited through charge §1.5 | `febf701b839ac7beb7c4a22df9e7895b91e9977c0215b814c98c6987cb28304e` |
+
+- Historical source IDs refer to `base-httpauth-payment.md` (9 Sep 2026) and `evm-charge.md` (2 Nov 2026). Section 19 also maps clauses reviewed directly against the pinned texts.
+- tron-charge = `draft-tron-charge.txt` (23 Nov 2026). Its sections 1–10 adapt the EVM method. Section 11 defines TRON resource sponsorship. Sections 12–13 cover IANA and references.
 - session = `draft-evm-session-00` (11 Nov 2026, expires 15 May 2027) -> `evm-session.md` (SES-xxx)
 - sdk    = mpp.dev "Custom payment methods" page, First-party SDK section and Gotchas (read 12 Nov 2026)
 
@@ -18,7 +25,7 @@ Baseline
 Intent applicability
 - Both intents: SYS-0xx (SDK), SYS-1xx (request flow), SYS-203 (addresses), SYS-301..305 (credential framing and
   client validation), SYS-503..507, SYS-513 and SYS-514 (on-chain result, broadcast, confirmation, node trust, Permit2 signing), SYS-602,
-  SYS-701..705 (errors), SYS-8xx (security)
+  SYS-701..705 (common errors, with session-specific mappings in SYS-1701..1703), SYS-8xx (security)
 - Charge only: the rest of SYS-2xx..SYS-5xx, SYS-601, SYS-710..713
 - Session only: SYS-10xx..SYS-18xx
 
@@ -40,7 +47,7 @@ than one level.
   the SDK. Session only.
 
 Field guide
-- Spec: section in base / charge / sdk (see Baseline). "project" = no spec clause; decided for this SDK.
+- Spec: section in a document named in Baseline. "project" = no spec clause; decided for this SDK.
 - Level: MUST / SHOULD / MAY as in the spec (RFC 2119). Combined values mean the clause has several parts.
   "(project)" marks a level assigned by this project because the source is not normative.
 - Role: Client (SDK client), Server (SDK server), Both, SDK (package as a whole), Contract (channel escrow contract)
@@ -53,7 +60,7 @@ Field guide
 - Release: R1 = charge intent with permit2, transaction and hash, plus everything both intents share; R2 = session
   intent (Permit2 or client-paid funding); R3 = EIP-3009 token authorization, pending decision D4. R2/R3 = the
   requirement has a part in each.
-- Source: BASE/EVM/SES requirements merged into this one; "-" = TRON- or SDK-specific, no upstream requirement
+- Source: BASE/EVM/SES requirements merged into this one; "direct (see Spec)" = direct upstream clause with no local extraction ID, "-" = TRON- or SDK-specific
 - TRON: same = upstream text applies as written, adapt = adapted to TRON, review = open design decision (see Note and
   the open decisions table), new = added for TRON or the SDK
 - Status: open | n/a (give reason) | doc (covered by at least one test case)
@@ -311,9 +318,9 @@ the credential type and is expanded in section 6.
 
 | Step | Requirements |
 |---|---|
-| (1)-(2) challenge issuance | SYS-101..SYS-115, SYS-119..SYS-125, SYS-201..SYS-215 |
+| (1)-(2) challenge issuance | SYS-101..SYS-115, SYS-119..SYS-125, SYS-127, SYS-201..SYS-215 |
 | (3) client fulfilment | SYS-304, SYS-305, SYS-310..SYS-330 |
-| (4) credential transport | SYS-116..SYS-118, SYS-301..SYS-303 |
+| (4) credential transport | SYS-103, SYS-116..SYS-118, SYS-127, SYS-301..SYS-303, SYS-807 |
 | (5) verification and settlement | SYS-401..SYS-405, SYS-501..SYS-518, SYS-710..SYS-713 |
 | (6) success response | SYS-601, SYS-124 |
 | any rejection | SYS-602, SYS-701..SYS-705 |
@@ -328,7 +335,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-001, BASE-008
 - TRON: same
 - Status: doc
-- Text: A request for a paid resource without a credential gets 402 with a WWW-Authenticate header carrying at least one fresh Payment challenge (method=tron, intent=charge or session); 402 is never returned without one.
+- Text: A request for a paid resource without a credential gets 402 with a WWW-Authenticate header carrying at least one fresh Payment challenge (method=tron, intent=charge or session); 402 is never returned without one. Each independently issued charge challenge has a unique id even when the price and payment terms are identical.
 - Note: Request flow steps (1)-(2). "Without a credential" means no Authorization: Payment header (or other selected field, SYS-116) at all; a request that carries a credential is step (4) and is handled by SYS-112, SYS-401 and SYS-701..SYS-705.
 
 ## SYS-102 When to return 402 (and when not)
@@ -341,11 +348,11 @@ the credential type and is expanded in section 6.
 - Source: BASE-009
 - TRON: same
 - Status: doc
-- Text: 402 is returned when payment is the primary barrier and a challenge can be built; not for missing authentication (401), missing authorization (403), nonexistent resources (404) or when no challenge can be constructed.
+- Text: The server returns 402 when payment is the primary barrier and it can issue a challenge. It returns 404 for a nonexistent resource and handles other authentication and access policy under SYS-103 and SYS-122.
 
-## SYS-103 Authenticate before challenging for payment
-- Spec: base §4.4.3
-- Level: SHOULD
+## SYS-103 Authenticate before issuing a challenge or processing a payment
+- Spec: base §4.4.3.1, 4.4.3.2
+- Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
 - Implementer: app
@@ -353,7 +360,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-010
 - TRON: same
 - Status: open
-- Text: When both authentication and payment are required: authentication is verified first, failure returns 401, and the 402 Payment challenge is issued only after authentication succeeds.
+- Text: When a resource also requires other authentication, the server SHOULD check it before issuing a Payment challenge. Missing or failed authentication gets 401 with the applicable challenge, or the mechanism-defined error if it defines no challenge. Authenticated callers denied by policy get 403. These denials SHOULD omit the Payment challenge. On every request carrying a Payment credential, the server MUST verify other authentication before verifying, consuming or settling payment. Denial on that basis MUST leave both challenge and proof unconsumed and issue no receipt. When the other mechanism uses Authorization, the server SHOULD select Payment-Authorization for Payment (SYS-116).
 
 ## SYS-104 Challenge syntax and required parameters
 - Spec: base §5.1, 5.1.1, App. A
@@ -377,7 +384,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-016, EVM-001, SES-040
 - TRON: same
 - Status: open
-- Text: request is the charge request JSON (RFC 8259) serialized with JCS (RFC 8785) and encoded as base64url (RFC 4648) without '=' padding.
+- Text: The request parameter contains the intent’s request JSON (RFC 8259), serialized with JCS (RFC 8785) and encoded as base64url (RFC 4648) without padding.
 
 ## SYS-106 expires parameter
 - Spec: base §5.1.2
@@ -389,7 +396,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-018
 - TRON: same
 - Status: open
-- Text: The server includes expires as an RFC 3339 date-time (SHOULD); the client never submits a credential for an expired challenge (MUST).
+- Text: The server SHOULD include expires as an RFC 3339 date-time. The client MUST never submit a credential for an expired challenge.
 
 ## SYS-107 digest parameter and verification
 - Spec: base §5.1.2, 5.1.3
@@ -425,7 +432,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-019
 - TRON: same
 - Status: open
-- Text: description (challenge parameter and request field) is never used for payment verification and is excluded from the binding.
+- Text: The top-level description auth-param is display-only and excluded from challenge binding. A description inside the request JSON is also display-only, but the whole encoded request remains bound by SYS-111.
 
 ## SYS-110 Unknown parameters and versioning
 - Spec: base §5.1.2, 9.2, 9.3
@@ -437,10 +444,10 @@ the credential type and is expanded in section 6.
 - Source: BASE-024, BASE-044
 - TRON: same
 - Status: open
-- Text: Clients ignore unknown challenge parameters and unknown fields; custom parameters use lowercase names; there is no wire version, and an optional methodDetails version means 1 when absent.
+- Text: Clients and servers ignore unknown parameters and fields when processing extensible protocol objects. Known fields retain their validation rules, including the binding of the entire encoded request and opaque values. Custom challenge parameter names are lowercase. There is no core wire version. An absent methodDetails version means version 1.
 
 ## SYS-111 Challenge binding coverage
-- Spec: base §5.1.2.1, 5.1.2.1.1
+- Spec: base §5.1.2.1, 5.1.2.1.1 and its test vectors
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
@@ -449,7 +456,8 @@ the credential type and is expanded in section 6.
 - Source: BASE-025, BASE-027
 - TRON: same
 - Status: open
-- Text: id is bound to realm, method, intent and request, plus expires, digest, opaque and header when present (MUST); if HMAC-SHA256 is used it follows the positional layout: seven '|'-joined slots with empty strings for absent optionals, an eighth header slot only when present, base64url without padding (SHOULD).
+- Text: The server MUST bind id to realm, method, intent and request, and to expires, digest, header and opaque where present. For stateless HMAC-SHA256 it SHOULD use the layout in the pinned draft: join realm, method, intent, encoded request, expires and digest in that order with the pipe delimiter, append header as a slot only when present, then always append the encoded opaque slot. Absent expires, digest and opaque each contribute an empty slot. Encode the MAC as unpadded base64url.
+- Note: Verify issuance and validation against all three expected IDs in base §5.1.2.1.1.1 (neither header nor opaque, header alone, and header with opaque).
 
 ## SYS-112 Challenge binding verification
 - Spec: base §5.1.2.1; charge §6 steps 3-4
@@ -464,8 +472,8 @@ the credential type and is expanded in section 6.
 - Text: On every credential the server verifies the binding and rejects credentials whose echoed challenge parameters differ in any field from the challenge it issued.
 
 ## SYS-113 Multiple challenges
-- Spec: base §7.3, B.4
-- Level: MAY/SHOULD
+- Spec: base §7.3, B.4; intent-charge §5.3
+- Level: MAY/SHOULD/MUST
 - Role: Both
 - Verification: ST
 - Implementer: mppx
@@ -473,7 +481,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-035
 - TRON: same
 - Status: open
-- Text: The tron challenge can be issued next to challenges of other methods or intents; the client picks one and treats unrecognized methods and intents as unsupported.
+- Text: The server may offer multiple challenges. The client treats unrecognized methods and intents as unsupported and selects a supported challenge according to capabilities and preferences. For a charge challenge using an unrecognized method, the client SHOULD ignore methodDetails and MUST still be able to display the shared charge fields without authorizing a payment.
 
 ## SYS-114 Accept-Payment request header
 - Spec: base §7.4, App. A
@@ -509,7 +517,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-020
 - TRON: same
 - Status: open
-- Text: Without a header parameter the client sends the credential in Authorization; with header=Payment-Authorization it uses that field only; any other header value makes the challenge unrecognized and no credential is sent.
+- Text: The client uses only the challenge-selected credential field: Authorization by default, or Payment-Authorization when explicitly selected. A client unable to use the selected field, or receiving any other header value, sends no Payment credential for that challenge.
 
 ## SYS-117 Server accepts credential only from the selected field
 - Spec: base §5.1.2, 5.2
@@ -548,32 +556,32 @@ the credential type and is expanded in section 6.
 - Text: The server keeps challenges under 8KB (SHOULD); the client handles challenges of at least 4KB and the server handles credentials of at least 4KB (MUST), including a hex-encoded signed TRON transaction.
 
 ## SYS-120 No side effects for unpaid requests
-- Spec: base §11.4
+- Spec: base §11.4; intent-charge §4.4; tron-charge §11.4
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
-- Implementer: mppx
+- Implementer: mppx/sdk/app
 - Release: R1
 - Source: BASE-051
 - TRON: same
 - Status: open
-- Text: A request that ends in 402 changes no server state beyond recording the challenge and causes no transaction to be broadcast to the TRON network.
+- Text: On the initial unpaid request, issuing a challenge is the only permitted state change. The server does not broadcast a transaction. For a charge, the server withholds the entire protected resource and all application effects until payment verifies and settles. This includes buffered bytes, the first stream chunk, tool or external API calls on the caller’s behalf, and queued jobs. Delivering any of these effects before a charge subsequently fails is a defect. On a credentialed sponsored attempt, SYS-515..518 authorize only the specified settlement operations, which can incur costs even if the transfer later fails. They never authorize early execution of the resource handler.
 
 ## SYS-121 Idempotency-Key support
 - Spec: base §11.4
 - Level: SHOULD
-- Role: Server
+- Role: Both
 - Verification: ST/SIT
 - Implementer: app
 - Release: R1
 - Source: BASE-052, SES-120
 - TRON: same
-- Status: n/a (application concern: replaying the stored response needs the application to keep its results; no second settlement is verified by SYS-710 and SYS-712; client-side key handling left to the application)
-- Text: Clients include Idempotency-Key on paid requests (SHOULD, session); for POST/PUT/DELETE the server accepts Idempotency-Key; a retry with the same key and a valid credential returns the original response without re-executing the handler or settling again.
+- Status: open
+- Text: Clients SHOULD include Idempotency-Key on paid session requests. For POST/PUT/DELETE the application SHOULD support an idempotent retry. After current authentication and access checks, a retry of the same operation with the same key and valid payment credential returns the saved successful response. It neither settles a new payment nor executes the handler again. A key alone does not authorize retrieving a saved response.
 
 ## SYS-122 Valid payment but policy denial -> 403
 - Spec: base §4.2, 4.3
-- Level: MUST
+- Level: MUST/SHOULD
 - Role: Server
 - Verification: ST
 - Implementer: app
@@ -581,7 +589,7 @@ the credential type and is expanded in section 6.
 - Source: BASE-006
 - TRON: same
 - Status: open
-- Text: When payment verifies but policy denies access the response is 403 without a challenge; 401 stays reserved for authentication failures unrelated to payment.
+- Text: If payment settled but access policy denies delivery, the server returns 403 without a Payment challenge or receipt. On a 403 following a paid request, Problem Details SHOULD say whether payment settled or other authentication denied access before settlement (SYS-103).
 
 ## SYS-123 Character encoding and locale
 - Spec: base §10
@@ -596,7 +604,7 @@ the credential type and is expanded in section 6.
 - Text: Strings are UTF-8; realm is ASCII; description follows Accept-Language.
 
 ## SYS-124 Caching headers
-- Spec: base §11.10
+- Spec: base §11.11
 - Level: MUST
 - Role: Server
 - Verification: ST
@@ -620,7 +628,7 @@ the credential type and is expanded in section 6.
 - Text: The server uses Retry-After to tell clients when a retry makes sense (for example while rate limited, while the fee payer is out of resources, or while the delegation pool or activation budget of SYS-510 is exhausted).
 
 ## SYS-126 Request flow completes through the SDK
-- Spec: base §3; sdk
+- Spec: base §4.1; sdk
 - Level: MUST (project)
 - Role: Both
 - Verification: SIT
@@ -631,6 +639,18 @@ the credential type and is expanded in section 6.
 - Status: open
 - Text: With SDK client and SDK server wired into `mppx`, a single application-level request runs steps (1)-(6) without manual intervention: the client receives the 402, fulfils it, retries once, and gets 200 with a Payment-Receipt; the resource handler executes exactly once and exactly one TRC-20 payment is settled on the TRON network.
 
+
+## SYS-127 Other authentication on paid retries
+- Spec: base §4.3, 4.4.3.3
+- Level: MUST/SHOULD/MAY
+- Role: Both
+- Verification: ST
+- Implementer: mppx/app
+- Release: R1
+- Source: direct (see Spec)
+- TRON: same
+- Status: open
+- Text: A client retrying with Payment MUST also send the other authentication used on the request that elicited 402 and refresh any required per-request proof. After a 401 it MAY refresh that authentication and resubmit the same Payment credential under its original unexpired challenge. The server MUST process it as a first presentation when other authentication now succeeds. After a 403 the client SHOULD retry this way only if the response explicitly says that other authentication denied access and no payment settled. The client MUST never resend a Payment credential with a different challenge. SYS-121 governs retries of a previously successful operation.
 
 # 3. Charge request schema
 
@@ -650,7 +670,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 ```
 
 ## SYS-201 Shared request fields
-- Spec: charge §4.1
+- Spec: charge §4.1; intent-charge §5.1
 - Level: MUST
 - Role: Both
 - Verification: ST
@@ -659,7 +679,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-002
 - TRON: same
 - Status: open
-- Text: amount (non-negative integer string in base units, no sign, decimals or exponent), currency and recipient are present; description and externalId are optional strings; the client rejects requests that violate this.
+- Text: amount (non-negative integer string in base units, no sign, decimals or exponent), currency and recipient are present; description and externalId are optional strings; the client rejects requests that violate this. The charge request object MUST omit any duplicate expiry value. Challenge expiry travels only in the expires auth-param (SYS-106).
 
 ## SYS-202 TRC-20 only
 - Spec: charge Abstract, §1
@@ -783,7 +803,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-011, EVM-012
 - TRON: same
 - Status: open
-- Text: If present, splits has at least 1 entry and the server limits it to 10 (SHOULD); memo is at most 256 characters; the primary transfer and all splits use the same currency token.
+- Text: If present, splits MUST be a nonempty array. Each entry requires a recipient address under SYS-203 and an amount expressed as a non-negative base-unit integer string. An optional memo is a string of at most 256 characters. All transfers use currency. Servers SHOULD limit the array to ten entries.
 
 ## SYS-212 Splits require permit2
 - Spec: charge §4.2.3, 5.3.2, 5.4, 5.5, 6 step 5
@@ -876,7 +896,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Note: Decision D5 (resolved 23 Nov 2026, chain reference revised to decimal the same day): the tron namespace with a Base58Check address; the eip155 form is not used. The decimal chain reference follows the CAIP-2 tron namespace (ChainAgnostic/namespaces tron/caip2.md, merged through PR 170), which makes decimal canonical and treats the 0x hex form as a deprecated alias. The server compares the decoded 20-byte address, not the string (SYS-203), and rejects a source whose normalized chain reference differs from the challenge chainId. Accepting the hex alias on input follows the namespace spec's backwards-compatibility rule (decided 23 Nov 2026).
 
 ## SYS-304 Client validates the challenge before paying
-- Spec: base §7.4, 11.6; charge §10.3
+- Spec: base §7.4, 11.6; charge §10.3; intent-charge §8.1, 8.2, 8.6
 - Level: MUST
 - Role: Client
 - Verification: ST
@@ -885,11 +905,11 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: BASE-039, BASE-054, EVM-038
 - TRON: same
 - Status: open
-- Text: Before signing or broadcasting, and regardless of any Accept-Payment sent, the client parses the request and checks amount, currency, recipient, chainId, splits and the validity window against its configured policy: `maxAmount` (highest amount per payment), `currencies` (allowed token contracts) and the supported chain IDs of SYS-007; a failed check produces no signature and no transaction.
+- Text: Before signing or broadcasting, the client verifies the amount for the requested resource against maxAmount, the token against currencies, the chain against SYS-007, and the validity window against policy. It checks the primary recipient and every split recipient by decoded address against the recipients expected for this resource by the application or explicitly confirmed by the user. It verifies the split sum under SYS-210. An unexpected recipient, including a single unexpected split payee, prevents automatic payment. Any unresolved check fails before a signature or transaction, regardless of Accept-Payment.
 - Note: Option names follow the `mppx` client options documented on mpp.dev (read 12 Nov 2026); confirm against the library when implementing.
 
 ## SYS-305 Origin display and user confirmation
-- Spec: base §11.11
+- Spec: base §11.12; intent-charge §8.2
 - Level: SHOULD
 - Role: Client
 - Verification: ST
@@ -898,7 +918,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: BASE-058
 - TRON: same
 - Status: open
-- Text: The client offers a confirmation hook that receives the requesting origin and the decoded request; payment proceeds automatically only inside the limits of an explicit policy.
+- Text: The confirmation hook receives the requesting origin and decoded request. Interactive clients SHOULD display the origin, warn about unknown recipients and obtain explicit confirmation before paying. Automatic payment requires an explicit policy covering the terms checked by SYS-304.
 
 ## SYS-310 Transaction payload
 - Spec: charge §5.4
@@ -962,7 +982,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-015, EVM-016
 - TRON: adapt
 - Status: open
-- Text: The permit2 payload has type, permit {permitted, nonce, deadline}, transferDetails, witness and signature; permitted is always an array (length 1 for a single transfer), each token equals currency, and transferDetails has the same length.
+- Text: For type "permit2" all of permit, transferDetails, witness and signature are required. permit is an object with a decimal integer string nonce, a Unix-seconds decimal integer string deadline and a permitted array. Each permitted entry contains token (the currency address) and amount (the maximum in base units as a decimal integer string). Each transferDetails entry contains to (an address) and requestedAmount (the exact base-unit amount as a decimal integer string). Both arrays contain exactly one primary entry plus one per split, ordered per SYS-213. witness is the SYS-321 object. signature is a 65-byte TIP-712 signature (r, s, v) encoded as 0x-prefixed hex.
 - Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514. The signed message's spender field is methodDetails.spender (SYS-204); the TIP-712 domain is name "Permit2", the chainId and the 20-byte form of permit2Address.
 
 ## SYS-321 Permit2 witness and challengeHash
@@ -975,7 +995,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-017, EVM-018
 - TRON: adapt
 - Status: open
-- Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the witness carries challengeHash and externalId (empty string when the request has none); the witness type string passed to Permit2 is exactly `PaymentWitness witness)PaymentWitness(bytes32 challengeHash,string externalId)TokenPermissions(address token,uint256 amount)` (no space after any comma); typed data is signed per TIP-712.
+- Text: challengeHash = keccak256(packed(challenge.id, challenge.realm)); the wire witness contains challengeHash as a 0x-prefixed 32-byte hex string and externalId as the exact request string (empty string when the request has none); the witness type string passed to Permit2 is exactly `PaymentWitness witness)PaymentWitness(bytes32 challengeHash,string externalId)TokenPermissions(address token,uint256 amount)` (no space after any comma); typed data is signed per TIP-712.
 - Note: The text rendering of the EVM draft shows a space after the comma in "bytes32 challengeHash, string externalId", which TIP-712/EIP-712 type encoding does not allow and which would make every signature fail on-chain; tron-charge §5.2.3 uses the string above (Appendix C, open issue 9). SYS-514 confirms it against the deployed contract.
 
 ## SYS-322 Client checks its Permit2 allowance before signing
@@ -1001,11 +1021,13 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-021, EVM-022, EVM-023
 - TRON: review
 - Status: open
-- Text: The authorization payload has type, from, to, value, validAfter, validBefore, nonce and signature; to equals the challenge recipient, value equals amount, nonce equals challengeHash (MUST); validBefore corresponds to the challenge expires (SHOULD).
+- Text: For type "authorization", from and to are required address strings under SYS-203. value is a required decimal base-unit integer string. validAfter and validBefore are required Unix-seconds decimal integer strings. nonce is the 0x-prefixed 32-byte hex challengeHash of SYS-321. signature is a required 65-byte TIP-712 signature encoded as 0x-prefixed hex. The signed to and value MUST match recipient and amount. validBefore SHOULD correspond to the challenge expiry.
 - Note: Decision D4.
 
 
 # 5. Server verification
+
+SYS-103 applies before any payment verification. In all four charge flows, the server enforces SYS-710..712 before the first settlement side effect and before granting access. The diagrams show the type-specific steps.
 
 Checks the server performs before anything is broadcast or accepted. All are verifiable at system test level with a stub node. The EVM
 verification requirements (EVM-027..031) each mix pre-checks and on-chain steps; here the pre-checks are SYS-40x and
@@ -1022,7 +1044,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - TRON: same
 - Status: open
 - Text: In order: decode the base64url credential and parse the JSON; payload.type is one of the types accepted for the challenge; the challenge is authenticated by its binding (SYS-112), which proves the server issued it and that no echoed field was changed (reject otherwise); a splits challenge is rejected unless payload.type is permit2; then type-specific verification runs.
-- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. Reuse is detected through the consumed set (SYS-710), not by storing challenges.
+- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. For charge, SYS-710 tracks both the challenge ID and proof independently of how the binding is verified.
 
 ## SYS-402 Transaction pre-broadcast verification
 - Spec: charge §6.3 steps 1-5
@@ -1051,7 +1073,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Note: First step of EVM-031 (carried by SYS-502). Accounts with changed or multi-signature permissions can already pay with hash: the node enforced their permissions on broadcast, and the server only reads the result (decision D7).
 
 ## SYS-404 Permit2 pre-submit verification
-- Spec: charge §6.1
+- Spec: charge §5.2.3, 6.1; tron-charge §6.1
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
@@ -1060,7 +1082,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: EVM-027
 - TRON: adapt
 - Status: open
-- Text: Before submitting: source is present and the TIP-712 signature recovers to the source address; the signed spender equals methodDetails.spender and the account the server will submit from; deadline has not passed; the signer's token balance covers the total and its Permit2 allowance is sufficient (read from the TRON network); witness.challengeHash matches; permitted and transferDetails have equal length; every token equals currency; primary and split to/requestedAmount match the request; the source account's permissions still authorize its own key: the key that derives to the source address alone meets the threshold of the owner permission, or of an active permission whose operations allow TriggerSmartContract (read from the TRON network); otherwise the credential is rejected with verification-failed and a detail saying the account's permissions no longer authorize the signing key.
+- Text: Before submission, the server requires source and verifies that the TIP-712 signature recovers to that address, the signed spender matches both methodDetails.spender and the submitting account, and the deadline is still valid. It reads the signer’s token balance and Permit2 allowance on the target network and checks that each covers the total. It compares witness.challengeHash with the hash of this challenge and witness.externalId with the exact request string, using the empty string when absent (SYS-321). It checks both array lengths under SYS-320, each token against currency, and every recipient and requestedAmount in SYS-213 order. The source key alone must meet the threshold of its owner permission or an active permission allowing TriggerSmartContract. If that permission check fails, the server returns verification-failed with the cause. Failure of any check prevents submission.
 - Note: Decision D3 (resolved): Permit2 deployments per SYS-014; signing compatibility is verified by SYS-514. Permission check (added 23 Nov 2026): Permit2 verifies the signature with ecrecover, which knows nothing about TRON account permissions, so the address's original key can still sign permit2 transfers after the owner permission was changed to other keys (key rotation after a compromise, or multi-signature) for every token with an outstanding approval to Permit2. The check stops the SDK from being the path for such a transfer; it cannot protect the account against direct calls to Permit2, for which the only remedy is revoking the approval (charge §10.5). Decision D7 (confirmed 23 Nov 2026): multi-signature accounts cannot use permit2 and pay with transaction or hash. An unmodified account has its own key with weight 1 and threshold 1 in the owner permission, so it always passes. Multi-signature transactions themselves are decision D7.
 
 ## SYS-405 Authorization pre-submit verification
@@ -1073,7 +1095,7 @@ the on-chain half is the matching flow requirement in section 6, which is the on
 - Source: -
 - TRON: review
 - Status: open
-- Text: Before submitting: the token implements transferWithAuthorization; the signature recovers to from; to, value and nonce match recipient, amount and challengeHash; validBefore has not passed; the signer's token balance is sufficient; the account permissions of from still authorize its own key, as in SYS-404 (the key that derives to from alone meets the threshold of the owner permission, or of an active permission whose operations allow TriggerSmartContract); otherwise the credential is rejected with verification-failed and a detail saying the account's permissions no longer authorize the signing key.
+- Text: Before submitting: the token implements transferWithAuthorization; the signature recovers to from; to, value and nonce match recipient, amount and challengeHash; the signed validity window is open (validAfter < current Unix time < validBefore); the signer's token balance is sufficient; the account permissions of from still authorize its own key, as in SYS-404 (the key that derives to from alone meets the threshold of the owner permission, or of an active permission whose operations allow TriggerSmartContract); otherwise the credential is rejected with verification-failed and a detail saying the account's permissions no longer authorize the signing key.
 - Note: Pre-submit half of EVM-029 (carried by SYS-509). Decision D4. Permission check (added 23 Nov 2026): the token contract verifies the authorization with ecrecover, which ignores account permissions, so the same gap as in SYS-404 applies; unlike Permit2, no approval is needed, so a removed key can sign authorizations for the whole balance of any token that implements transferWithAuthorization. Decision D7 (confirmed 23 Nov 2026): multi-signature accounts cannot use authorization.
 
 
@@ -1219,7 +1241,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: EVM-031
 - TRON: adapt
 - Status: open
-- Text: The client broadcasts the transfer and presents its transaction ID; the server, without broadcasting anything, fetches the transaction info from the TRON network, requires SYS-503, SYS-505 and SYS-506, then marks the ID consumed and delivers the resource with a receipt; an unknown or not yet included ID is rejected.
+- Text: The client broadcasts the transfer and presents its transaction ID; the server, without broadcasting anything, fetches the transaction info from the TRON network, requires SYS-503, SYS-505 and SYS-506, then records both challenge and proof as consumed under SYS-710 and delivers the resource with a receipt; an unknown or not yet included ID is rejected.
 
 ## SYS-503 On-chain success determination
 - Spec: charge §6.1-6.4 ("receipt status success")
@@ -1283,8 +1305,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: SES-095
 - TRON: new
 - Status: open
-- Text: A transaction that is not yet included may be awaited up to a bounded timeout; if the required confirmation is not reached within the configured timeout the server returns an error without Payment-Receipt and without delivering the resource; a server-broadcast transaction whose expiration has passed without inclusion is treated as definitively failed; any delegation made for it (SYS-516) is reclaimed.
-- Note: Decision D10 -- response code and whether the client may retry the same credential while the outcome is still unknown.
+- Text: A transaction that is not yet included may be awaited up to a bounded timeout; if the required confirmation is not reached within the configured timeout the server returns an error without Payment-Receipt and without delivering the resource; a server-broadcast transaction is definitively failed on expiry only when the server confirms it was never included; any delegation made for it (SYS-516) is reclaimed.
+- Note: For charge, a timeout alone does not release the SYS-710 reservation. D10 concerns the response code and whether the client may resubmit the same credential to learn the outcome of the pending attempt.
 
 ## SYS-508 Permit2 charge flow
 - Spec: charge §5.2.4, 6.1, 7.1
@@ -1338,7 +1360,7 @@ Permit2 and authorization flows (server submits and pays):
 - Note: Level stays SHOULD for permit2 and authorization as in the EVM draft; for sponsored transactions it is a project MUST, because the server hands resources to the payer. Decision D20 (resolved 23 Nov 2026): the Energy of a TRC-20 transfer depends on whether the recipient already holds the token; a constant call (triggerConstantContract) returns the Energy for the actual recipient, so the estimate needs no separate rule. The free daily Bandwidth covers up to two TRC-20 transfers, but the payer may already have used it.
 
 ## SYS-512 Client does not pay twice
-- Spec: base §11.3; project
+- Spec: base §4.4.3.3, 11.3; project
 - Level: MUST (project)
 - Role: Client
 - Verification: SIT
@@ -1347,7 +1369,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: -
 - TRON: new
 - Status: open
-- Text: After a rejected or timed-out credential the client does not sign or broadcast a second payment for the same application request without passing SYS-304 again; for the hash type it may present the already confirmed transaction ID against a fresh challenge with identical terms instead of paying again.
+- Text: A retry after other-authentication denial follows SYS-127 using the original credential and unexpired challenge. For a fresh challenge the client must validate the new terms under SYS-304 and construct a new credential. For hash payments it may use an already confirmed, unconsumed transaction ID if its terms match. While the outcome of a prior submission is unknown, the client does not initiate a second payment for the same operation.
 - Note: Decision D10.
 
 ## SYS-513 Node trust
@@ -1360,7 +1382,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: -
 - TRON: new
 - Status: open
-- Text: Settlement data comes only from the configured, trusted TRON node(s); node errors, timeouts and inconsistent answers are treated as verification failure, never as success.
+- Text: Settlement data comes only from configured, trusted TRON nodes. Errors, timeouts and inconsistent answers withhold the resource and receipt. An inconclusive lookup after submission follows SYS-507 and keeps the charge reservation pending. An unexpected internal processing error follows SYS-701.
 
 ## SYS-514 Permit2 typed-data compatibility on TRON
 - Spec: project; charge §5.2.3, 6.1; session §10.2.2
@@ -1440,7 +1462,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-032, BASE-033, EVM-033
 - TRON: adapt
 - Status: open
-- Text: Every successful settlement returns Payment-Receipt (base64url JSON) on a 2xx response with method "tron", challengeId, reference (the settling transaction ID), status "success", RFC 3339 timestamp and chainId, plus externalId when the request had one; the reference resolves on the network named by chainId to the transaction that paid.
+- Text: On a successful 2xx charge response the server returns Payment-Receipt as unpadded base64url of a JSON object. It contains the strings method ("tron"), challengeId (original challenge id), reference (settling transaction ID), status ("success") and timestamp (RFC 3339 settlement time), and the numeric chainId. It echoes externalId as a string when present in the request. The reference resolves on that chain to the transaction that paid.
 
 ## SYS-602 No receipt on error responses
 - Spec: base §5.3.1; charge §7.6
@@ -1467,7 +1489,23 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-007, BASE-040, BASE-041, EVM-036
 - TRON: same
 - Status: open
-- Text: Every credential rejection returns 402 with a fresh challenge (MUST) and an application/problem+json body (RFC 9457) whose type is one of the https://paymentauth.org/problems/ types and whose detail describes the failure (SHOULD); error details never go into WWW-Authenticate parameters; method-unsupported uses 400.
+- Text: Every 402 carries a fresh Payment challenge. Payment errors SHOULD include an RFC 9457 application/problem+json body with a type URI under https://paymentauth.org/problems/ and a human-readable detail. The HTTP status and problem type follow SYS-702..705 and the table below for charge, or SYS-1701..1703 for session-specific failures. Error details stay in the body. No error response includes a Payment-Receipt (SYS-602).
+
+For charge, classify the cause using the following mapping. The specific base §8.2 types supplement the charge §9 proof-verification errors.
+
+| Condition | HTTP | Problem type suffix |
+|---|---|---|
+| Paid resource requested without payment | 402 | payment-required |
+| Invalid credential encoding, JSON or outer structure | 402 | malformed-credential |
+| Well-formed envelope with a payload that fails its wire schema | 402 | invalid-payload |
+| Unknown, altered or consumed challenge | 402 | invalid-challenge |
+| Expired challenge or signed payment authorization | 402 | payment-expired |
+| Otherwise valid proof of a payment below the required amount | 402 | payment-insufficient |
+| Invalid proof, definitive broadcast rejection, failed execution or other transfer mismatch | 402 | verification-failed |
+| A further client action is required to complete payment | 402 | payment-action-required |
+| Unsupported payment method | 400 | method-unsupported |
+| Malformed application request or invalid request parameters | 400 | bad-request |
+| Unexpected internal payment-processing failure | 500 | internal-payment-error |
 
 ## SYS-702 Malformed credential -> malformed-credential
 - Spec: base §4.2, 8.2
@@ -1479,7 +1517,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-002
 - TRON: same
 - Status: open
-- Text: Invalid base64url, invalid JSON, a missing challenge or payload object, or a payload that does not fit the schema of its type yields the malformed-credential problem.
+- Text: Invalid base64url, invalid JSON, a non-object credential or an absent or non-object challenge or payload yields malformed-credential. For charge, a decoded payload object with missing, mistyped or malformed method fields yields invalid-payload. This includes a missing or unknown payload.type. Session-specific payload errors follow SYS-1701..1703.
 
 ## SYS-703 Unknown or used challenge id -> invalid-challenge
 - Spec: base §4.2, 8.2
@@ -1491,8 +1529,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-003
 - TRON: same
 - Status: open
-- Text: A challenge id that fails the binding check (not issued by this server, or echoed parameters changed), or a challenge already consumed by an accepted payment (SYS-710), yields the invalid-challenge problem.
-- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. Reuse is detected through the consumed set (SYS-710), not by storing challenges.
+- Text: A challenge id that fails the binding check or a charge challenge already consumed by an accepted payment yields invalid-challenge, even when presented with a different proof. A recognized idempotent retry under SYS-121 returns the saved result without accepting a new payment.
+- Note: Either design passes: a stateless server recomputes the HMAC binding from the echoed parameters (SYS-111, as `mppx` does per the mpp.dev docs), a stateful one looks the challenge up by id. For charge, SYS-710 tracks both the challenge ID and proof independently of how the binding is verified.
 
 ## SYS-704 Expired challenge -> payment-expired
 - Spec: base §4.2, 8.2
@@ -1504,7 +1542,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-004
 - TRON: same
 - Status: open
-- Text: A credential for an expired challenge yields the payment-expired problem and nothing is broadcast, even if the embedded TRON transaction is still valid.
+- Text: An expired challenge yields payment-expired even if the embedded transaction is still valid. For charge this problem also applies when the signed Permit2 deadline or token authorization validity period has ended. The server submits no transfer.
 
 ## SYS-705 Failed verification -> verification-failed
 - Spec: base §4.2, 5.3.1, 8.2
@@ -1516,10 +1554,10 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-005
 - TRON: same
 - Status: open
-- Text: Any failed payload check, broadcast rejection, failed on-chain result or event mismatch yields the verification-failed problem.
+- Text: For charge, a schema-valid proof that fails signature or payment verification, a definitive broadcast rejection, failed execution or an event mismatch yields verification-failed unless a more specific cause in SYS-701 applies. An otherwise valid payment below the required amount yields payment-insufficient. Unknown settlement outcomes follow SYS-507 and SYS-710. Session-specific verification failures follow SYS-1701..1703.
 
 ## SYS-710 Replay protection
-- Spec: base §11.3; charge §8
+- Spec: base §4.2, 11.3, 11.5; charge §8; intent-charge §6.2, 8.3
 - Level: MUST
 - Role: Server
 - Verification: ST/SIT
@@ -1528,8 +1566,8 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-050, EVM-035
 - TRON: adapt
 - Status: open
-- Text: The server keeps a consumed set, checks it before accepting a credential and marks the token consumed atomically after verification; the token is the transaction ID for transaction and hash, and signer address plus nonce for permit2 and authorization; transaction IDs are normalized (lowercase hex, no prefix) so the same transaction cannot be presented twice in a different spelling.
-- Note: TRON has no account nonce; a signed transaction is unique by its ID and bounded by its expiration.
+- Text: Both the charge challenge ID and its proof are single-use. The proof key is the normalized transaction ID (lowercase hex without prefix) shared by transaction and hash, or the signer address and nonce for the applicable signed authorization scheme. Before any settlement side effect or acceptance of a client-broadcast transfer, the server atomically reserves both identifiers across instances. After verified settlement it atomically records both as consumed before resource delivery. An existing reservation blocks a competing settlement or acceptance using either identifier. Retries may learn the outcome of the original attempt only as allowed by SYS-121 and D10. A definitive failure before payment releases the reservation. An uncertain settlement keeps both identifiers reserved until the outcome is reconciled (SYS-507).
+- Note: The invariant is one accepted charge per challenge and one use of a proof across challenges. Server-side admission cannot prevent a client from independently broadcasting multiple transfers. A saved-response retry under SYS-121 is not another proof acceptance.
 
 ## SYS-711 Consumed set durability
 - Spec: charge §8, 10.4; project
@@ -1541,10 +1579,10 @@ Permit2 and authorization flows (server submits and pays):
 - Source: -
 - TRON: new
 - Status: open
-- Text: The consumed set lives in the configured `Store`, is shared by all server instances and survives restarts; hash-type tokens are kept without expiry because an on-chain transaction ID stays valid forever.
+- Text: The configured Store shares pending and consumed challenge IDs and proof keys across server instances and preserves them across restarts. A pending server submission can be reconciled after restart using its transaction ID. Pending settlement survives a timeout or crash until reconciled. A consumed challenge ID is retained for as long as that challenge could be presented as valid. Consumed transaction IDs from either transaction or hash remain recorded without expiry because the same on-chain transfer can later be presented as a hash.
 
 ## SYS-712 Concurrent credential use
-- Spec: base §11.5
+- Spec: base §11.5; charge §8; intent-charge §8.3
 - Level: MUST/SHOULD
 - Role: Server
 - Verification: ST/SIT
@@ -1553,7 +1591,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-053
 - TRON: same
 - Status: open
-- Text: Concurrent requests carrying the same credential result in at most one settlement on the TRON network and one resource delivery; the others are rejected; sponsored payments (SYS-515) are serialized per payer address, so concurrent credentials never trigger parallel activations or delegations to one account.
+- Text: Concurrent submissions can produce at most one successful server-initiated payment, one accepted charge and one execution of the resource handler when they share either a challenge ID or a proof. Verify this for identical credentials, different valid proofs for one challenge, and one proof presented under different challenges, including across server instances. A recognized SYS-121 retry can return the original response. Sponsored attempts also remain serialized per payer address (SYS-515).
 
 ## SYS-713 Permit2 nonce conflicts and contract address
 - Spec: charge §10.5
@@ -1573,7 +1611,7 @@ Permit2 and authorization flows (server submits and pays):
 
 ## SYS-801 TLS required
 - Spec: base §11.2; charge §10.1
-- Level: MUST
+- Level: MUST/SHOULD
 - Role: Both
 - Verification: SIT
 - Implementer: app
@@ -1581,7 +1619,7 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-047, EVM-037
 - TRON: same
 - Status: open
-- Text: TLS 1.2 or later (1.3 recommended); the server issues no challenge and the client sends no credential over plain HTTP.
+- Text: Both sides MUST use TLS 1.2 or later to send Payment messages and SHOULD use TLS 1.3. The server never issues a challenge and the client never sends a credential over plaintext HTTP. Both sides SHOULD reject inbound Payment protocol messages received over a non-TLS connection.
 
 ## SYS-802 Sensitive data handling
 - Spec: base §11.2.1, 11.7, 11.8
@@ -1617,10 +1655,10 @@ Permit2 and authorization flows (server submits and pays):
 - Source: BASE-055
 - TRON: same
 - Status: open
-- Text: A payer needs nothing but a TRON address holding the token: no user account, registration or prior contact with the server.
+- Text: The server requires no user account, registration or prior contact to make a payment. A protected resource may separately require authentication for access under SYS-103.
 
 ## SYS-805 Intermediary handling of 402
-- Spec: base §11.9
+- Spec: base §11.10
 - Level: SHOULD/MUST
 - Role: Both
 - Verification: SIT
@@ -1632,7 +1670,7 @@ Permit2 and authorization flows (server submits and pays):
 - Text: The server does not rely on intermediary-specific 402 handling; the client completes the flow through proxies and gateways.
 
 ## SYS-806 Rate limiting
-- Spec: base §11.12; charge §10.6
+- Spec: base §11.13; charge §10.6
 - Level: SHOULD
 - Role: Server
 - Verification: SIT
@@ -1643,6 +1681,18 @@ Permit2 and authorization flows (server submits and pays):
 - Status: open
 - Text: Challenge issuance and credential verification attempts are rate limited, per client address and IP for server-paid credential types and for sponsored payments, with account activations (SYS-517) limited separately.
 
+
+## SYS-807 Other authentication credentials and origin boundaries
+- Spec: base §11.9
+- Level: MUST/SHOULD
+- Role: Both
+- Verification: ST
+- Implementer: mppx/app
+- Release: R1
+- Source: direct (see Spec)
+- TRON: same
+- Status: open
+- Text: Clients SHOULD send other authentication credentials only to the origins for which they were issued and MUST strip them on a cross-origin redirect. An intermediary forwarding a paid request to another origin MUST withhold those credentials unless their authentication mechanism permits forwarding. A server MUST reject Payment-Receipt and the credential’s opaque value as sources of proof of other authentication. Method-defined proofs inside payload remain subject to method verification.
 
 # 10. Session: SDK configuration and request schema
 
@@ -2962,7 +3012,7 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 | D7 | RESOLVED 23 Nov 2026: the server verifies transaction signatures against the account's actual permission (Permission_id, distinct keys, weights, threshold, operations) in R1 (SYS-402). Client side (R2): the application collects signatures and the SDK sends the pre-signed transaction (SYS-313); no SDK collection helper. Accepted limit: signing must finish before the challenge expires. permit2 and authorization stay unavailable to multi-signature accounts (SYS-404, SYS-405); hash already works (SYS-403) | SYS-402, SYS-403, SYS-404, SYS-405, SYS-313 |
 | D8 | Duplicate-transaction answer from the node on broadcast | SYS-504 |
 | D9 | RESOLVED 23 Nov 2026: default is the first block with a successful result; the server can be configured to require a solidified block | SYS-506 |
-| D10 | Behavior while a settlement outcome is unknown (timeout) | SYS-507, SYS-512 |
+| D10 | Open: response status and whether to accept a retry of the same pending attempt. A timeout preserves both replay reservations and the client does not initiate another payment. | SYS-507, SYS-512, SYS-710 |
 | D11 | Chain identifier: value of block.chainid on the TVM versus the chainId in TIP-712 domains, challenge and receipt. PARTLY RESOLVED 22 Nov 2026: the Permit2 domain separators on mainnet and Nile are built with chainId 728126428 and 3448148188, so block.chainid on the TVM returns these values and TIP-712 domains use them (SYS-014). Still to confirm for the escrow and voucher domain by component test | SYS-514, SYS-1006, SYS-1102, SYS-1301 |
 | D12 | RESOLVED 12 Nov 2026: server-paid session funding (feePayer true) uses Permit2; the authorization variants depend on D4 | SYS-1012, SYS-1014, SYS-1120, SYS-1210, SYS-1213, SYS-1214, SYS-1405, SYS-1407, SYS-1408, SYS-1507 |
 | D13 | Target tokens for session: verify transfer behavior of each TRC-20 (return values, fee parameters) | SYS-1016, SYS-1103 |
@@ -2977,7 +3027,20 @@ Requirements marked `TRON: review` depend on the decisions still open. Resolve, 
 
 # 19. Source map
 
-Every BASE, EVM and SES requirement and the SYS requirement that carries it. Not carried: BASE-043 (a requirement on method-spec
+The first table maps clauses reviewed against the 24 November snapshots, including clauses without extraction IDs. The following tables retain the historical BASE, EVM and SES carriers.
+
+| Reviewed clause | SYS requirements |
+|---|---|
+| base §§4.3–4.4.3, 11.9 (other authentication, retries and origin handling) | SYS-103, SYS-116, SYS-121, SYS-122, SYS-127, SYS-512, SYS-807 |
+| base §§5.1.2.1.1–5.1.2.1.1.1, 5.3 (HMAC layout, vectors and receipt encoding) | SYS-111, SYS-601 |
+| base §§4.2, 8.1–8.2 (status and problem types), charge §9 | SYS-101, SYS-122, SYS-602, SYS-701..705 |
+| base §§9.2.1, 9.3, 11.2 (unknown fields and inbound TLS) | SYS-110, SYS-801 |
+| charge §§4.2.3, 5.2–5.3, 6.1 (split and signed payload schemas, full witness verification) | SYS-211, SYS-213, SYS-320, SYS-321, SYS-330, SYS-404 |
+| charge §10.3, intent-charge §§8.1–8.2, 8.6 (expected payment terms and recipients) | SYS-203, SYS-205, SYS-210, SYS-214, SYS-304, SYS-305 |
+| intent-charge §§4.4, 5.1–5.3 (atomic delivery, shared request fields and method extensions) | SYS-012, SYS-105, SYS-113, SYS-120, SYS-201..204 |
+| base §§11.3–11.5, charge §8, intent-charge §§6.2, 7.1, 8.3 (single-use challenge and proof, concurrent settlement and retry) | SYS-121, SYS-401, SYS-507, SYS-703, SYS-704, SYS-710..712 |
+
+Not carried: BASE-043 (a requirement on method-spec
 authors, satisfied by the method drafts, not by the SDK).
 
 | Source | Carried by | Source | Carried by |
