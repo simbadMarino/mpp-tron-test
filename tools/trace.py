@@ -79,7 +79,7 @@ def parse_tests(tdir):
         rel = f.relative_to(ROOT)
         tc, status = None, ""
         for n, line in enumerate(lines, 1):
-            h = re.match(r"^## (TC-\d+)\b", line)
+            h = re.match(r"^## (TC-(?:[A-Za-z]+-)*\d+)\b", line)
             if h:
                 tc, status = h[1], ""
             s = re.match(r"^Status:\s*(\S+)", line)
