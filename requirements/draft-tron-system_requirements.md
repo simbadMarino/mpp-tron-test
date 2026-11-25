@@ -683,8 +683,8 @@ Decoded `request` for the tron method (addresses per SYS-203):
 
 ## SYS-202 TRC-20 only
 - Spec: charge Abstract, §1
-- Level: MUST
-- Role: Both
+- Level: MUST/SHOULD
+- Role: Server
 - Verification: ST/SIT
 - Implementer: sdk
 - Release: R1
@@ -692,6 +692,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - TRON: new
 - Status: open
 - Text: currency is the address of a TRC-20 contract; native TRX and TRC-10 assets cannot be configured or charged, and the server verifies at startup that currency is a deployed contract on the configured network (SHOULD).
+- Note: Client side is covered by SYS-203 (format) and SYS-304 (allowlist)
 
 ## SYS-203 Address format and comparison
 - Spec: charge §4.1
@@ -815,7 +816,7 @@ Decoded `request` for the tron method (addresses per SYS-203):
 - Source: EVM-009
 - TRON: adapt
 - Status: open
-- Text: The server rejects a challenge with splits that is fulfilled with a transaction, authorization or hash credential, and settles nothing on-chain for it.
+- Text: The server rejects a challenge with splits that is fulfilled with a transaction, authorization or hash credential with 402 invalid-payload and a fresh challenge (SYS-701), and settles nothing on-chain for it. The check comes after the challenge binding, expiry and consumption checks (charge §6 step 5).
 - Note: Decision D3 (resolved): splits are in scope on the networks listed in SYS-014; on a network without a Permit2 deployment the server does not issue splits.
 
 ## SYS-213 Transfer ordering and primary remainder
@@ -1497,7 +1498,7 @@ For charge, classify the cause using the following mapping. The specific base §
 |---|---|---|
 | Paid resource requested without payment | 402 | payment-required |
 | Invalid credential encoding, JSON or outer structure | 402 | malformed-credential |
-| Well-formed envelope with a payload that fails its wire schema | 402 | invalid-payload |
+| Well-formed envelope with a payload that fails its wire schema, or a payload.type not accepted for the challenge (e.g. not permit2 for splits, SYS-212) | 402 | invalid-payload |
 | Unknown, altered or consumed challenge | 402 | invalid-challenge |
 | Expired challenge or signed payment authorization | 402 | payment-expired |
 | Otherwise valid proof of a payment below the required amount | 402 | payment-insufficient |
